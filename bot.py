@@ -1,4 +1,4 @@
-import asyncio
+git add bot.pyimport asyncio
 import logging
 import os
 
@@ -23,15 +23,22 @@ async def start_web_server():
     # (masalan lokal kompyuterda ishga tushirilsa), web-server ishga
     # tushmaydi -- botga hech qanday ta'sir qilmaydi.
     port = os.getenv("PORT")
+    logging.info(f"PORT muhit o'zgaruvchisi: {port!r}")
+
     if not port:
+        logging.warning("PORT topilmadi -- keep-alive server ishga tushmaydi.")
         return
-    app = web.Application()
-    app.router.add_get("/", handle_ping)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=int(port))
-    await site.start()
-    logging.info(f"Keep-alive web-server {port}-portda ishga tushdi")
+
+    try:
+        app = web.Application()
+        app.router.add_get("/", handle_ping)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, host="0.0.0.0", port=int(port))
+        await site.start()
+        logging.info(f"✅ Keep-alive web-server 0.0.0.0:{port} portida ishga tushdi")
+    except Exception:
+        logging.exception("❌ Keep-alive web-server ishga tushmadi:")
 
 
 async def main():
