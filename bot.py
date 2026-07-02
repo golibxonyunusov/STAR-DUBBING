@@ -1,4 +1,4 @@
-git add bot.pyimport asyncio
+import asyncio
 import logging
 import os
 
