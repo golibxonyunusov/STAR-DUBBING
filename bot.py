@@ -1,13 +1,37 @@
 import asyncio
 import logging
+import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiohttp import web
 
 from config import BOT_TOKEN
 from database import init_db
 from handlers import admin, user
+
+
+async def handle_ping(request):
+    # Render.com va UptimeRobot shu manzilga so'rov yuborib, botni
+    # "uyg'oq" tutish uchun ishlatadi. Oddiy javob qaytarsak yetarli.
+    return web.Response(text="AniSinus bot ishlayapti ✅")
+
+
+async def start_web_server():
+    # Render.com PORT o'zgaruvchisini avtomatik beradi. Agar mavjud bo'lmasa
+    # (masalan lokal kompyuterda ishga tushirilsa), web-server ishga
+    # tushmaydi -- botga hech qanday ta'sir qilmaydi.
+    port = os.getenv("PORT")
+    if not port:
+        return
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host="0.0.0.0", port=int(port))
+    await site.start()
+    logging.info(f"Keep-alive web-server {port}-portda ishga tushdi")
 
 
 async def main():
@@ -27,6 +51,8 @@ async def main():
     # qidiruv handleri (har qanday matn) admin FSM xabarlarini "yeb qo'yadi".
     dp.include_router(admin.router)
     dp.include_router(user.router)
+
+    await start_web_server()
 
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
