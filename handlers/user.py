@@ -62,10 +62,10 @@ async def cmd_start(message: Message, bot: Bot):
         return
 
     await message.answer(
-    "🎌 <b>STAR DUBBING</b> ga xush kelibsiz!\n\n"
+    "<b>STAR DUBBING</b> ga xush kelibsiz!\n\n"
         "Bu yerda sevimli anime va animelaringizning o'zbek tilidagi dublyaj qilingan "
         "epizodlarini topishingiz mumkin.\n\n"
-        "🔍 Qidirish orqali anime nomini yozing\n"
+        "🔍 Qidirish orqali anime nomini yoki kodini yozing\n"
         "📚 Barcha animelar bo'limidan ro'yxatni ko'ring\n"
         "🎭 Janrlar bo'yicha tanlang",
         reply_markup=main_menu_kb(),
@@ -171,7 +171,7 @@ async def paginate_genre_list(call: CallbackQuery):
 @router.message(F.text == "ℹ️ Bot haqida")
 async def about_bot(message: Message):
     await message.answer(
-        "🎌 <b>STAR DUBBING</b>\n\n"
+        "<b>STAR DUBBING</b>\n\n"
         "Ushbu bot orqali anime va animelarning o'zbek tilidagi dublyajini "
         "bepul tomosha qilishingiz mumkin.\n\n"
         "📖 <b>Botdan foydalanish tartibi:</b>\n\n"
