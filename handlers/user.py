@@ -202,7 +202,7 @@ async def vip_status(message: Message):
             "VIP status orqali:\n"
             "✅ Majburiy obunasiz botdan foydalanish\n"
             "✅ Yopiq (VIP-only) animelarni ko'rish imkoniga ega bo'lasiz\n\n"
-            "VIP olish uchun admin bilan bog'laning."
+            "VIP olish uchun @rudeus1111 bilan bog'laning."
         )
 
 
