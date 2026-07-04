@@ -194,10 +194,25 @@ async def paginate_genre_list(call: CallbackQuery):
 @router.message(F.text == "ℹ️ Bot haqida")
 async def about_bot(message: Message):
     await message.answer(
-        "<b>STAR DUBBING</b>\n\n"
+        "🎌 <b>AniSinus</b>\n\n"
         "Ushbu bot orqali anime va animelarning o'zbek tilidagi dublyajini "
         "bepul tomosha qilishingiz mumkin.\n\n"
-        "Savol va takliflar uchun admin bilan bog'laning."
+        "📖 <b>Botdan foydalanish tartibi:</b>\n\n"
+        "1️⃣ 🔍 <b>Qidirish</b> — tugmani bosing, so'ng anime nomini yoki "
+        "uning kodini (masalan: <code>3</code>) yozing.\n\n"
+        "2️⃣ 📚 <b>Barcha animelar</b> — mavjud barcha animelar ro'yxatini "
+        "ko'rasiz, har birining oldida <code>#kod</code> ko'rsatilgan.\n\n"
+        "3️⃣ 🎭 <b>Janrlar</b> — o'zingizga yoqqan janrni tanlab, shu janrdagi "
+        "animelarni ko'rasiz.\n\n"
+        "4️⃣ Anime ustiga bosgach, uning haqida ma'lumot (tavsif, janr, yil) "
+        "va \"🎬 Epizodlar\" tugmasi chiqadi.\n\n"
+        "5️⃣ Epizodlar tugmasini bosib, kerakli qism raqamini tanlang — "
+        "video darhol yuboriladi. Video ostidagi \"⬅️ Oldingi\" / \"➡️ Keyingi\" "
+        "tugmalari orqali qismlar orasida qulay o'tishingiz mumkin.\n\n"
+        "💡 <b>Maslahat:</b> agar animening kodini bilsangiz "
+        "(masalan <code>5</code>), uni to'g'ridan-to'g'ri qidiruv maydoniga "
+        "yozib yuboring — bot darhol o'sha animeni ochib beradi.\n\n"
+        "❓ Savol va takliflar uchun @xumoyun_best1 bilan bog'laning."
     )
 
 
