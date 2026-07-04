@@ -131,7 +131,7 @@ STYLES = """
   .marquee { flex: 1; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
   .marquee-track {
     display: inline-flex; white-space: nowrap; gap: 28px;
-    animation: marquee 32s linear infinite;
+    animation: marquee 50s linear infinite;
     padding-right: 28px;
   }
   @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
