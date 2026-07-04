@@ -80,3 +80,7 @@ kabi botlarda ishlatiladigan usul.
 - "Sevimlilar" ro'yxati (foydalanuvchi anime saqlab qo'yishi)
 - Yangi epizod chiqqanda avtomatik xabarnoma yuborish
 - Inline mode (`@AniSinusBot nomi` deb yozib istalgan chatda qidirish)
+
+git add .
+git commit -m "VIP tizimi qoshildi"
+git push
