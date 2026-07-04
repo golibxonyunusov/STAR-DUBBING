@@ -28,6 +28,10 @@ async def get_required_channels():
 
 
 async def check_subscription(bot: Bot, user_id: int) -> bool:
+    # VIP foydalanuvchilar majburiy obunadan ozod
+    if await db.is_vip(user_id):
+        return True
+
     channels = await get_required_channels()
     if not channels:
         return True
@@ -62,10 +66,10 @@ async def cmd_start(message: Message, bot: Bot):
         return
 
     await message.answer(
-    "<b>STAR DUBBING</b> ga xush kelibsiz!\n\n"
+        "🎌 <b>AniSinus</b> ga xush kelibsiz!\n\n"
         "Bu yerda sevimli anime va animelaringizning o'zbek tilidagi dublyaj qilingan "
         "epizodlarini topishingiz mumkin.\n\n"
-        "🔍 Qidirish orqali anime nomini yoki kodini yozing\n"
+        "🔍 Qidirish orqali anime nomini yozing\n"
         "📚 Barcha animelar bo'limidan ro'yxatni ko'ring\n"
         "🎭 Janrlar bo'yicha tanlang",
         reply_markup=main_menu_kb(),
@@ -171,39 +175,57 @@ async def paginate_genre_list(call: CallbackQuery):
 @router.message(F.text == "ℹ️ Bot haqida")
 async def about_bot(message: Message):
     await message.answer(
-        "<b>STAR DUBBING</b>\n\n"
+        "🎌 <b>AniSinus</b>\n\n"
         "Ushbu bot orqali anime va animelarning o'zbek tilidagi dublyajini "
         "bepul tomosha qilishingiz mumkin.\n\n"
-        "📖 <b>Botdan foydalanish tartibi:</b>\n\n"
-        "1️⃣ 🔍 <b>Qidirish</b> — tugmani bosing, so'ng anime nomini yoki "
-        "uning kodini (masalan: <code>3</code>) yozing.\n\n"
-        "2️⃣ 📚 <b>Barcha animelar</b> — mavjud barcha animelar ro'yxatini "
-        "ko'rasiz, har birining oldida <code>#kod</code> ko'rsatilgan.\n\n"
-        "3️⃣ 🎭 <b>Janrlar</b> — o'zingizga yoqqan janrni tanlab, shu janrdagi "
-        "animelarni ko'rasiz.\n\n"
-        "4️⃣ Anime ustiga bosgach, uning haqida ma'lumot (tavsif, janr, yil) "
-        "va \"🎬 Epizodlar\" tugmasi chiqadi.\n\n"
-        "5️⃣ Epizodlar tugmasini bosib, kerakli qism raqamini tanlang — "
-        "video darhol yuboriladi. Video ostidagi \"⬅️ Oldingi\" / \"➡️ Keyingi\" "
-        "tugmalari orqali qismlar orasida qulay o'tishingiz mumkin.\n\n"
-        "💡 <b>Maslahat:</b> agar animening kodini bilsangiz "
-        "(masalan <code>5</code>), uni to'g'ridan-to'g'ri qidiruv maydoniga "
-        "yozib yuboring — bot darhol o'sha animeni ochib beradi.\n\n"
-        "❓ Savol va takliflar uchun admin bilan bog'laning:"
-        "@xumoyun_best1"
+        "Savol va takliflar uchun admin bilan bog'laning."
     )
+
+
+@router.message(F.text == "👑 VIP")
+async def vip_status(message: Message):
+    vip = await db.get_vip(message.from_user.id)
+    if vip:
+        if vip["expires_at"]:
+            muddat = f"tugash sanasi: {vip['expires_at'][:10]}"
+        else:
+            muddat = "umrbod ♾"
+        await message.answer(
+            f"👑 Siz <b>VIP</b> foydalanuvchisiz!\n"
+            f"📅 {muddat}\n\n"
+            f"✅ Majburiy obunasiz botdan foydalanasiz\n"
+            f"✅ Barcha VIP-only animelarni ko'ra olasiz"
+        )
+    else:
+        await message.answer(
+            "👑 Siz hozircha VIP emassiz.\n\n"
+            "VIP status orqali:\n"
+            "✅ Majburiy obunasiz botdan foydalanish\n"
+            "✅ Yopiq (VIP-only) animelarni ko'rish imkoniga ega bo'lasiz\n\n"
+            "VIP olish uchun admin bilan bog'laning."
+        )
+
 
 # ---------- ANIME KARTASI ----------
 
-async def render_anime_card(message: Message, anime_id: int) -> bool:
+async def render_anime_card(message: Message, anime_id: int, user_id: int) -> bool:
     """Anime kartasini (poster + ma'lumot + kod) yuboradi. Topilmasa False qaytaradi."""
     anime = await db.get_anime(anime_id)
     if not anime:
         return False
+
+    if anime["vip_only"] and not await db.is_vip(user_id):
+        await message.answer(
+            f"🔒 <b>{anime['title']}</b>\n\n"
+            "Bu anime faqat 👑 <b>VIP</b> foydalanuvchilar uchun ochiq.\n"
+            "VIP status olish uchun admin bilan bog'laning."
+        )
+        return True
+
     episodes_count = await db.get_episodes_count(anime_id)
 
     caption = (
-        f"🎬 <b>{anime['title']}</b>\n"
+        f"{'🔒 ' if anime['vip_only'] else ''}🎬 <b>{anime['title']}</b>\n"
         f"🆔 Kod: <code>{anime['id']}</code>\n\n"
         f"{anime['description'] or ''}\n\n"
         f"🎭 Janr: {anime['genre'] or '-'}\n"
@@ -224,7 +246,7 @@ async def render_anime_card(message: Message, anime_id: int) -> bool:
 @router.callback_query(F.data.startswith("anime_"))
 async def show_anime_card(call: CallbackQuery):
     anime_id = int(call.data.split("_")[1])
-    found = await render_anime_card(call.message, anime_id)
+    found = await render_anime_card(call.message, anime_id, call.from_user.id)
     if not found:
         await call.answer("Anime topilmadi.", show_alert=True)
         return
@@ -279,12 +301,20 @@ async def send_episode(call: CallbackQuery, bot: Bot):
     _, anime_id_str, ep_num_str = call.data.split("_")
     anime_id, ep_num = int(anime_id_str), int(ep_num_str)
 
+    anime = await db.get_anime(anime_id)
+    if not anime:
+        await call.answer("Anime topilmadi.", show_alert=True)
+        return
+
+    if anime["vip_only"] and not await db.is_vip(call.from_user.id):
+        await call.answer("🔒 Bu anime faqat VIP foydalanuvchilar uchun.", show_alert=True)
+        return
+
     episode = await db.get_episode_by_number(anime_id, ep_num)
     if not episode:
         await call.answer("Bu epizod topilmadi.", show_alert=True)
         return
 
-    anime = await db.get_anime(anime_id)
     total_eps = await db.get_episodes_count(anime_id)
     has_prev = await db.get_episode_by_number(anime_id, ep_num - 1) is not None
     has_next = await db.get_episode_by_number(anime_id, ep_num + 1) is not None
@@ -309,7 +339,7 @@ async def text_search(message: Message, bot: Bot):
 
     # Agar foydalanuvchi faqat raqam yozsa -- bu anime KODI (ID) deb qaraymiz
     if query.isdigit():
-        found = await render_anime_card(message, int(query))
+        found = await render_anime_card(message, int(query), message.from_user.id)
         if not found:
             await message.answer(
                 f"😔 <code>{query}</code> kodli anime topilmadi. Kodni tekshirib qayta urinib ko'ring."

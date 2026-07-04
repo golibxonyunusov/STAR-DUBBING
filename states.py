@@ -28,3 +28,12 @@ class AddChannel(StatesGroup):
     chat_id = State()
     title = State()
     link = State()
+
+
+class GrantVip(StatesGroup):
+    user_id = State()
+    days = State()
+
+
+class RemoveVip(StatesGroup):
+    user_id = State()

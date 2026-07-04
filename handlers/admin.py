@@ -5,8 +5,16 @@ from aiogram.types import Message, CallbackQuery
 
 import database as db
 from config import ADMIN_IDS
-from states import AddAnime, AddEpisode, DeleteAnime, Broadcast, AddChannel
-from keyboards import admin_menu_kb, main_menu_kb, choose_anime_kb, confirm_kb
+from states import AddAnime, AddEpisode, DeleteAnime, Broadcast, AddChannel, GrantVip, RemoveVip
+from keyboards import (
+    admin_menu_kb,
+    main_menu_kb,
+    choose_anime_kb,
+    confirm_kb,
+    vip_admin_menu_kb,
+    vip_duration_kb,
+    anime_vip_toggle_kb,
+)
 
 router = Router()
 
@@ -311,3 +319,126 @@ async def delete_channel(message: Message):
     row_id = int(message.text.split("_")[1])
     await db.remove_required_channel(row_id)
     await message.answer("🗑 Kanal o'chirildi.")
+
+
+# ==================== VIP BOSHQARISH ====================
+
+@router.message(F.text == "👑 VIP boshqarish")
+async def vip_menu(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    await message.answer("👑 VIP foydalanuvchilarni boshqarish:", reply_markup=vip_admin_menu_kb())
+
+
+@router.callback_query(F.data == "vip_grant")
+async def vip_grant_start(call: CallbackQuery, state: FSMContext):
+    await state.set_state(GrantVip.user_id)
+    await call.message.answer("Foydalanuvchining Telegram ID raqamini kiriting:")
+    await call.answer()
+
+
+@router.message(GrantVip.user_id)
+async def vip_grant_userid(message: Message, state: FSMContext):
+    if not message.text.strip().isdigit():
+        await message.answer("Iltimos, faqat raqam (ID) kiriting.")
+        return
+    await state.update_data(user_id=int(message.text.strip()))
+    await state.set_state(GrantVip.days)
+    await message.answer("Muddatni tanlang:", reply_markup=vip_duration_kb())
+
+
+@router.callback_query(GrantVip.days, F.data.startswith("vipdays_"))
+async def vip_grant_finish(call: CallbackQuery, state: FSMContext, bot: Bot):
+    days = int(call.data.split("_")[1])
+    data = await state.get_data()
+    user_id = data["user_id"]
+    await db.grant_vip(user_id, days=None if days == 0 else days)
+    await state.clear()
+
+    muddat = "umrbod" if days == 0 else f"{days} kunga"
+    await call.message.answer(f"✅ <code>{user_id}</code> foydalanuvchiga {muddat} VIP status berildi.", reply_markup=admin_menu_kb())
+
+    try:
+        await bot.send_message(
+            user_id,
+            f"🎉 Tabriklaymiz! Sizga {muddat} VIP status berildi.\n"
+            f"Endi barcha VIP animelarga va majburiy obunasiz botdan foydalanishingiz mumkin!"
+        )
+    except Exception:
+        pass
+    await call.answer()
+
+
+@router.callback_query(F.data == "vip_remove")
+async def vip_remove_start(call: CallbackQuery, state: FSMContext):
+    await state.set_state(RemoveVip.user_id)
+    await call.message.answer("VIP olib tashlanadigan foydalanuvchi ID raqamini kiriting:")
+    await call.answer()
+
+
+@router.message(RemoveVip.user_id)
+async def vip_remove_finish(message: Message, state: FSMContext):
+    if not message.text.strip().isdigit():
+        await message.answer("Iltimos, faqat raqam (ID) kiriting.")
+        return
+    user_id = int(message.text.strip())
+    await db.remove_vip(user_id)
+    await state.clear()
+    await message.answer(f"🗑 <code>{user_id}</code> foydalanuvchidan VIP status olib tashlandi.", reply_markup=admin_menu_kb())
+
+
+@router.callback_query(F.data == "vip_list")
+async def vip_list(call: CallbackQuery):
+    rows = await db.list_vip_users()
+    if not rows:
+        await call.message.answer("Hozircha VIP foydalanuvchilar yo'q.")
+        await call.answer()
+        return
+
+    text = "👑 <b>VIP foydalanuvchilar</b>\n\n"
+    for r in rows:
+        muddat = "umrbod" if not r["expires_at"] else r["expires_at"][:10]
+        text += f"• <code>{r['user_id']}</code> — {muddat}\n"
+    await call.message.answer(text)
+    await call.answer()
+
+
+# ==================== ANIMENI VIP QILISH ====================
+
+@router.message(F.text == "🔒 Anime VIP qilish")
+async def anime_vip_start(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    rows = await db.list_anime(offset=0, limit=50)
+    if not rows:
+        await message.answer("Hozircha animelar yo'q.")
+        return
+    await message.answer("Qaysi animeni sozlamoqchisiz?", reply_markup=choose_anime_kb(rows, action="vipanimepick"))
+
+
+@router.callback_query(F.data.startswith("vipanimepick_"))
+async def anime_vip_toggle_menu(call: CallbackQuery):
+    anime_id = int(call.data.split("_")[1])
+    anime = await db.get_anime(anime_id)
+    status = "🔒 VIP-only" if anime["vip_only"] else "🔓 Hammaga ochiq"
+    await call.message.answer(
+        f"\"{anime['title']}\" hozirgi holati: {status}",
+        reply_markup=anime_vip_toggle_kb(anime_id, anime["vip_only"]),
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("vipanime_on_"))
+async def anime_vip_on(call: CallbackQuery):
+    anime_id = int(call.data.split("_")[2])
+    await db.set_anime_vip(anime_id, True)
+    await call.message.edit_text("🔒 Bu anime endi faqat VIP foydalanuvchilar uchun.")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("vipanime_off_"))
+async def anime_vip_off(call: CallbackQuery):
+    anime_id = int(call.data.split("_")[2])
+    await db.set_anime_vip(anime_id, False)
+    await call.message.edit_text("🔓 Bu anime endi hammaga ochiq.")
+    await call.answer()

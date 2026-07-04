@@ -11,7 +11,8 @@ from config import PAGE_SIZE
 def main_menu_kb() -> ReplyKeyboardMarkup:
     kb = [
         [KeyboardButton(text="🔍 Qidirish"), KeyboardButton(text="📚 Barcha animelar")],
-        [KeyboardButton(text="🎭 Janrlar"), KeyboardButton(text="ℹ️ Bot haqida")],
+        [KeyboardButton(text="🎭 Janrlar"), KeyboardButton(text="👑 VIP")],
+        [KeyboardButton(text="ℹ️ Bot haqida")],
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
@@ -21,6 +22,7 @@ def admin_menu_kb() -> ReplyKeyboardMarkup:
         [KeyboardButton(text="➕ Anime qo'shish"), KeyboardButton(text="🎬 Epizod qo'shish")],
         [KeyboardButton(text="🗑 Anime o'chirish"), KeyboardButton(text="📊 Statistika")],
         [KeyboardButton(text="📢 Xabar yuborish"), KeyboardButton(text="📡 Kanal sozlash")],
+        [KeyboardButton(text="👑 VIP boshqarish"), KeyboardButton(text="🔒 Anime VIP qilish")],
         [KeyboardButton(text="⬅️ Foydalanuvchi menyusi")],
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
@@ -42,7 +44,8 @@ def subscribe_kb(channels) -> InlineKeyboardMarkup:
 def anime_list_kb(anime_rows, offset, total, genre=None):
     rows = []
     for a in anime_rows:
-        rows.append([InlineKeyboardButton(text=f"#{a['id']} {a['title']}", callback_data=f"anime_{a['id']}")])
+        lock = "🔒 " if a["vip_only"] else ""
+        rows.append([InlineKeyboardButton(text=f"{lock}#{a['id']} {a['title']}", callback_data=f"anime_{a['id']}")])
 
     nav = []
     prefix = f"listg_{genre}" if genre else "list"
@@ -123,3 +126,36 @@ def confirm_kb(yes_cb, no_cb):
         InlineKeyboardButton(text="✅ Ha", callback_data=yes_cb),
         InlineKeyboardButton(text="❌ Yo'q", callback_data=no_cb),
     ]])
+
+
+# ---------- VIP ----------
+
+def vip_admin_menu_kb():
+    rows = [
+        [InlineKeyboardButton(text="➕ VIP berish", callback_data="vip_grant")],
+        [InlineKeyboardButton(text="➖ VIP olib tashlash", callback_data="vip_remove")],
+        [InlineKeyboardButton(text="📋 VIP foydalanuvchilar", callback_data="vip_list")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def vip_duration_kb():
+    rows = [
+        [
+            InlineKeyboardButton(text="7 kun", callback_data="vipdays_7"),
+            InlineKeyboardButton(text="30 kun", callback_data="vipdays_30"),
+        ],
+        [
+            InlineKeyboardButton(text="90 kun", callback_data="vipdays_90"),
+            InlineKeyboardButton(text="♾ Umrbod", callback_data="vipdays_0"),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def anime_vip_toggle_kb(anime_id, is_vip_only):
+    if is_vip_only:
+        btn = InlineKeyboardButton(text="🔓 VIP belgisini olib tashlash", callback_data=f"vipanime_off_{anime_id}")
+    else:
+        btn = InlineKeyboardButton(text="🔒 VIP-only qilish", callback_data=f"vipanime_on_{anime_id}")
+    return InlineKeyboardMarkup(inline_keyboard=[[btn]])

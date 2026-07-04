@@ -36,12 +36,24 @@ CREATE TABLE IF NOT EXISTS required_channels (
     title TEXT,
     invite_link TEXT
 );
+
+CREATE TABLE IF NOT EXISTS vip_users (
+    user_id INTEGER PRIMARY KEY,
+    granted_at TEXT,
+    expires_at TEXT
+);
 """
 
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(CREATE_TABLES_SQL)
+        # Eski bazalarda "anime" jadvalida vip_only ustuni bo'lmasligi mumkin --
+        # xavfsiz migratsiya (xato chiqsa e'tibor bermaymiz, demak ustun allaqachon bor).
+        try:
+            await db.execute("ALTER TABLE anime ADD COLUMN vip_only INTEGER DEFAULT 0")
+        except Exception:
+            pass
         await db.commit()
 
 
@@ -72,12 +84,12 @@ async def get_all_user_ids() -> list[int]:
 
 # ---------- ANIME ----------
 
-async def add_anime(title, description, poster_file_id, genre, year) -> int:
+async def add_anime(title, description, poster_file_id, genre, year, vip_only: bool = False) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
-            "INSERT INTO anime (title, description, poster_file_id, genre, year, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (title, description, poster_file_id, genre, year, datetime.utcnow().isoformat()),
+            "INSERT INTO anime (title, description, poster_file_id, genre, year, created_at, vip_only) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (title, description, poster_file_id, genre, year, datetime.utcnow().isoformat(), int(vip_only)),
         )
         await db.commit()
         return cur.lastrowid
@@ -214,3 +226,62 @@ async def get_required_channels():
         db.row_factory = aiosqlite.Row
         cur = await db.execute("SELECT * FROM required_channels")
         return await cur.fetchall()
+
+
+# ---------- VIP FOYDALANUVCHILAR ----------
+
+async def grant_vip(user_id: int, days: int | None):
+    """days=None -> umrbod VIP. days=30 -> 30 kunlik VIP (mavjud VIP bo'lsa yangilanadi)."""
+    expires_at = None
+    if days is not None:
+        from datetime import timedelta
+        expires_at = (datetime.utcnow() + timedelta(days=days)).isoformat()
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO vip_users (user_id, granted_at, expires_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET granted_at=excluded.granted_at, expires_at=excluded.expires_at",
+            (user_id, datetime.utcnow().isoformat(), expires_at),
+        )
+        await db.commit()
+
+
+async def remove_vip(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM vip_users WHERE user_id = ?", (user_id,))
+        await db.commit()
+
+
+async def get_vip(user_id: int):
+    """VIP ma'lumotini qaytaradi. Muddati o'tgan bo'lsa avtomatik o'chirib, None qaytaradi."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM vip_users WHERE user_id = ?", (user_id,))
+        row = await cur.fetchone()
+        if not row:
+            return None
+        if row["expires_at"]:
+            if datetime.fromisoformat(row["expires_at"]) < datetime.utcnow():
+                await db.execute("DELETE FROM vip_users WHERE user_id = ?", (user_id,))
+                await db.commit()
+                return None
+        return row
+
+
+async def is_vip(user_id: int) -> bool:
+    return await get_vip(user_id) is not None
+
+
+async def list_vip_users():
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM vip_users ORDER BY granted_at DESC")
+        return await cur.fetchall()
+
+
+async def set_anime_vip(anime_id: int, vip_only: bool):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE anime SET vip_only = ? WHERE id = ?", (int(vip_only), anime_id)
+        )
+        await db.commit()
