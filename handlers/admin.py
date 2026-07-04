@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
 import database as db
-from config import ADMIN_IDS, STORAGE_CHANNEL_USERNAME
+from config import ADMIN_IDS
 from states import AddAnime, AddEpisode, DeleteAnime, Broadcast, AddChannel, GrantVip, RemoveVip
 from keyboards import (
     admin_menu_kb,
@@ -130,18 +130,7 @@ async def add_episode_number(message: Message, state: FSMContext):
         return
     await state.update_data(episode_number=int(message.text.strip()))
     await state.set_state(AddEpisode.video)
-
-    if STORAGE_CHANNEL_USERNAME:
-        await message.answer(
-            "🎥 Endi shu epizod videosini yuboring.\n\n"
-            f"💡 <b>Saytda video Telegram'ga chiqmasdan ko'rinishi uchun:</b> avval videoni "
-            f"@{STORAGE_CHANNEL_USERNAME} kanaliga joylang, so'ng O'SHA post'ni shu yerga "
-            f"forward qiling.\n\n"
-            f"Agar shunchaki video faylni to'g'ridan-to'g'ri yuborsangiz, u saytda faqat "
-            f"\"Telegram botga o'tish\" tugmasi orqali ko'rinadi (lekin baribir ishlayveradi)."
-        )
-    else:
-        await message.answer("🎥 Endi shu epizod videosini yuboring (yoki kanaldan forward qiling):")
+    await message.answer("🎥 Endi shu epizod videosini yuboring (yoki kanaldan forward qiling):")
 
 
 @router.message(AddEpisode.video, F.video)
@@ -158,32 +147,11 @@ async def add_episode_video(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    # Agar video bizning OCHIQ kanalimizdan forward qilingan bo'lsa, uning
-    # channel_message_id'sini saqlaymiz -- shu orqali sayt videoni o'zida
-    # (Telegram'ga chiqmasdan) iframe orqali ko'rsata oladi.
-    channel_message_id = None
-    origin = message.forward_origin
-    if origin and getattr(origin, "type", None) == "channel":
-        origin_username = (getattr(origin.chat, "username", "") or "").lower()
-        if STORAGE_CHANNEL_USERNAME and origin_username == STORAGE_CHANNEL_USERNAME.lower():
-            channel_message_id = origin.message_id
-
-    await db.add_episode(data["anime_id"], data["episode_number"], file_id, channel_message_id)
+    await db.add_episode(data["anime_id"], data["episode_number"], file_id)
     anime = await db.get_anime(data["anime_id"])
     await state.clear()
-
-    if channel_message_id:
-        site_note = "\n\n🌐 Bu epizod saytda Telegram'ga chiqmasdan, to'g'ridan-to'g'ri ko'rinadi!"
-    elif STORAGE_CHANNEL_USERNAME:
-        site_note = (
-            f"\n\n⚠️ Video kanaldan forward qilinmadi, shuning uchun saytda faqat "
-            f"\"Telegram botga o'tish\" tugmasi orqali ko'rinadi."
-        )
-    else:
-        site_note = ""
-
     await message.answer(
-        f"✅ \"{anime['title']}\" — {data['episode_number']}-qism qo'shildi!{site_note}",
+        f"✅ \"{anime['title']}\" — {data['episode_number']}-qism qo'shildi!",
         reply_markup=admin_menu_kb(),
     )
 

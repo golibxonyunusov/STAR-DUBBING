@@ -16,11 +16,6 @@ ADMIN_IDS = [
 # Masalan: -1001234567890 yoki @kanal_username
 STORAGE_CHANNEL_ID = os.getenv("STORAGE_CHANNEL_ID", "")
 
-# Videoni SAYTDA (Telegram'ga chiqmasdan) ko'rsatish uchun kerak bo'ladigan
-# OCHIQ (public, @username bor) kanal nomi, @ belgisisiz.
-# Bu kanal orqali "iframe" embed qilinadi -- shu sababli kanal ochiq bo'lishi shart.
-STORAGE_CHANNEL_USERNAME = os.getenv("STORAGE_CHANNEL_USERNAME", "").lstrip("@").strip()
-
 DB_PATH = os.getenv("DB_PATH", "anisinus.db")
 
 PAGE_SIZE = 8  # bitta sahifada nechta anime/epizod ko'rsatish

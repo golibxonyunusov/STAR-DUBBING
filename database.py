@@ -54,12 +54,6 @@ async def init_db():
             await db.execute("ALTER TABLE anime ADD COLUMN vip_only INTEGER DEFAULT 0")
         except Exception:
             pass
-        # Saytda videoni Telegram'ga chiqmasdan (iframe orqali) ko'rsatish uchun --
-        # ochiq kanaldagi post ID'si (agar epizod o'sha kanaldan forward qilingan bo'lsa).
-        try:
-            await db.execute("ALTER TABLE episodes ADD COLUMN channel_message_id INTEGER")
-        except Exception:
-            pass
         await db.commit()
 
 
@@ -79,13 +73,6 @@ async def get_users_count() -> int:
         cur = await db.execute("SELECT COUNT(*) FROM users")
         row = await cur.fetchone()
         return row[0] if row else 0
-
-
-async def get_user(user_id: int):
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cur = await db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-        return await cur.fetchone()
 
 
 async def get_all_user_ids() -> list[int]:
@@ -132,27 +119,6 @@ async def search_anime(query: str, limit: int = 20):
         return await cur.fetchall()
 
 
-async def search_anime_smart(query: str, limit: int = 20):
-    """Ham nom (LIKE), ham kod (ID) bo'yicha qidiradi va birlashtirib qaytaradi.
-    Bu, masalan, animening nomi '111' bo'lsa ham, kodi 111 bo'lsa ham to'g'ri ishlaydi."""
-    results = []
-    seen_ids = set()
-
-    if query.strip().isdigit():
-        anime = await get_anime(int(query.strip()))
-        if anime:
-            results.append(anime)
-            seen_ids.add(anime["id"])
-
-    title_matches = await search_anime(query, limit=limit)
-    for a in title_matches:
-        if a["id"] not in seen_ids:
-            results.append(a)
-            seen_ids.add(a["id"])
-
-    return results
-
-
 async def list_anime(offset: int = 0, limit: int = 8, genre: str | None = None):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -195,11 +161,11 @@ async def get_all_genres() -> list[str]:
 
 # ---------- EPISODES ----------
 
-async def add_episode(anime_id: int, episode_number: int, file_id: str, channel_message_id: int | None = None) -> int:
+async def add_episode(anime_id: int, episode_number: int, file_id: str) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
-            "INSERT INTO episodes (anime_id, episode_number, file_id, added_at, channel_message_id) VALUES (?, ?, ?, ?, ?)",
-            (anime_id, episode_number, file_id, datetime.utcnow().isoformat(), channel_message_id),
+            "INSERT INTO episodes (anime_id, episode_number, file_id, added_at) VALUES (?, ?, ?, ?)",
+            (anime_id, episode_number, file_id, datetime.utcnow().isoformat()),
         )
         await db.commit()
         return cur.lastrowid
