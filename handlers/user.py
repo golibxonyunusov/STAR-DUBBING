@@ -85,7 +85,7 @@ async def cmd_start(message: Message, bot: Bot, command: CommandObject):
                 pass
 
     await message.answer(
-        "🎌 <b>AniSinus</b> ga xush kelibsiz!\n\n"
+        "<b>STAR DUBBING</b> ga xush kelibsiz!\n\n"
         "Bu yerda sevimli anime va animelaringizning o'zbek tilidagi dublyaj qilingan "
         "epizodlarini topishingiz mumkin.\n\n"
         "🔍 Qidirish orqali anime nomini yozing\n"
@@ -194,7 +194,7 @@ async def paginate_genre_list(call: CallbackQuery):
 @router.message(F.text == "ℹ️ Bot haqida")
 async def about_bot(message: Message):
     await message.answer(
-        "🎌 <b>AniSinus</b>\n\n"
+        "<b>STAR DUBBING</b>\n\n"
         "Ushbu bot orqali anime va animelarning o'zbek tilidagi dublyajini "
         "bepul tomosha qilishingiz mumkin.\n\n"
         "Savol va takliflar uchun admin bilan bog'laning."
