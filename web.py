@@ -64,7 +64,7 @@ STYLES = """
     .star-dot { opacity: var(--max-op, .6) !important; }
     /* .marquee-track animatsiyasi ataylab qoldirilgan -- u sof bezak emas,
        balki yuqoridagi yugurib turuvchi matn orqali ma'lumot uzatadi. */
-    .marquee-track { animation: marquee 32s linear infinite !important; }
+    .marquee-track { animation: marquee 50s linear infinite !important; }
   }
   body {
     margin: 0;
