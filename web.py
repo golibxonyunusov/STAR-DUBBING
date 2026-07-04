@@ -56,6 +56,11 @@ STYLES = """
   html { scroll-behavior: smooth; }
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
+    /* Animatsiya o'chirilganda ham kontent ko'rinishi shart -- .card va
+       shu kabi elementlar boshlang'ich holati opacity:0 bo'lgani uchun,
+       animatsiyasiz ular abadiy ko'rinmas bo'lib qolardi. */
+    .card { opacity: 1 !important; transform: none !important; }
+    .star-dot { opacity: var(--max-op, .6) !important; }
   }
   body {
     margin: 0;
