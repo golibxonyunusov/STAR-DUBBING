@@ -82,5 +82,5 @@ kabi botlarda ishlatiladigan usul.
 - Inline mode (`@AniSinusBot nomi` deb yozib istalgan chatda qidirish)
 
 git add .
-git commit -m "VIP tizimi qoshildi"
+git commit -m "yangilanish"
 git push
