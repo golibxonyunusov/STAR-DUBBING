@@ -17,16 +17,73 @@ yulduzli fon (twinkle + otar yulduz animatsiyasi), "konstellyatsiya"
 uslubidagi bo'lim ajratgichlari va gradientli STAR/DUBBING wordmark.
 """
 
+import base64
+import hashlib
+import hmac
 import html
+import json
 import random
+import time
 from urllib.parse import quote
 
 from aiohttp import web
 
 import database as db
-from config import BOT_USERNAME, PAGE_SIZE
+from config import BOT_TOKEN, BOT_USERNAME, PAGE_SIZE, STORAGE_CHANNEL_USERNAME
 
 ACCENT = "#9b8cff"
+
+SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 kun
+
+
+# ---------- TELEGRAM LOGIN WIDGET: HASH TEKSHIRISH VA SESSIYA ----------
+
+def _telegram_check_hash(data: dict) -> bool:
+    """Telegram Login Widget yuborgan ma'lumotning haqiqiyligini tekshiradi.
+    https://core.telegram.org/widgets/login#checking-authorization
+    """
+    received_hash = data.get("hash", "")
+    check_data = {k: v for k, v in data.items() if k != "hash"}
+    data_check_string = "\n".join(f"{k}={check_data[k]}" for k in sorted(check_data))
+    secret_key = hashlib.sha256(BOT_TOKEN.encode()).digest()
+    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(computed_hash, received_hash)
+
+
+def _sign(payload_b64: str) -> str:
+    secret = hashlib.sha256(BOT_TOKEN.encode()).digest()
+    return hmac.new(secret, payload_b64.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def make_session_cookie(user_data: dict) -> str:
+    payload = {
+        "id": user_data["id"],
+        "first_name": user_data.get("first_name", ""),
+        "username": user_data.get("username", ""),
+        "photo_url": user_data.get("photo_url", ""),
+        "ts": int(time.time()),
+    }
+    payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+    return f"{payload_b64}.{_sign(payload_b64)}"
+
+
+def read_session_cookie(cookie_value: str | None) -> dict | None:
+    if not cookie_value or "." not in cookie_value:
+        return None
+    payload_b64, sig = cookie_value.rsplit(".", 1)
+    if not hmac.compare_digest(_sign(payload_b64), sig):
+        return None
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode()))
+    except Exception:
+        return None
+    if time.time() - payload.get("ts", 0) > SESSION_MAX_AGE:
+        return None
+    return payload
+
+
+def get_session(request) -> dict | None:
+    return read_session_cookie(request.cookies.get("session"))
 
 
 # ---------- STIL (CSS) ----------
@@ -54,6 +111,23 @@ STYLES = """
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
+
+  /* ---- yorug' (light) mavzu -- toggle tugmasi orqali almashtiriladi ---- */
+  html[data-theme="light"] {
+    --bg: #f4f3fb;
+    --bg-a: #ffffff;
+    --bg-b: #ecebf9;
+    --panel: #ffffff;
+    --panel-hi: #f1effb;
+    --line: #e1dff2;
+    --line-soft: #ebe9f7;
+    --ink: #1c1a2e;
+    --muted: #6d6a88;
+  }
+  html[data-theme="light"] #starfield { opacity: 0.12; }
+  html[data-theme="light"] .wordmark { filter: drop-shadow(0 4px 30px #6c5ce730); }
+  html[data-theme="light"] .card:hover { box-shadow: 0 22px 46px -18px #6c5ce730; }
+  html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #d8d5ec; }
   @media (prefers-reduced-motion: reduce) {
     *:not(.marquee-track) { animation: none !important; }
     *, *::before, *::after { transition: none !important; }
@@ -436,6 +510,7 @@ STYLES = """
     display: flex; align-items: center; gap: 10px;
     transition: all .18s;
   }
+  button.ep-btn { font-family: inherit; cursor: pointer; text-align: left; width: 100%; }
   .ep-btn .num {
     font-family: 'IBM Plex Mono', monospace; color: var(--muted); font-size: 12.5px;
     min-width: 22px;
@@ -473,11 +548,124 @@ STYLES = """
     .detail .poster-big-wrap { width: 170px; }
     .stats-row { gap: 26px; }
   }
+
+  /* ---- theme toggle & profil (header) ---- */
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--line);
+    font-size: 15px; cursor: pointer; transition: all .2s; flex-shrink: 0;
+  }
+  .icon-btn:hover { border-color: var(--violet); background: var(--panel-hi); }
+  .profile-chip {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 30px;
+    padding: 5px 14px 5px 5px; font-size: 13px; font-weight: 600; transition: all .2s;
+  }
+  .profile-chip:hover { border-color: var(--violet); }
+  .profile-chip img {
+    width: 26px; height: 26px; border-radius: 50%; object-fit: cover;
+    background: var(--panel-hi);
+  }
+  .header-actions { display: flex; align-items: center; gap: 10px; }
+
+  /* ---- profil sahifasi ---- */
+  .profile-card {
+    max-width: 460px; margin: 40px auto; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 16px; padding: 36px 30px;
+    text-align: center;
+  }
+  .profile-card img.avatar {
+    width: 92px; height: 92px; border-radius: 50%; object-fit: cover;
+    margin-bottom: 18px; border: 3px solid var(--violet); background: var(--panel-hi);
+  }
+  .profile-card h1 {
+    font-family: 'Oswald', sans-serif; font-size: 22px; margin: 0 0 4px;
+    text-transform: uppercase;
+  }
+  .profile-card .uname {
+    color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: 13px;
+    margin-bottom: 22px;
+  }
+  .vip-pill {
+    display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px;
+    border-radius: 30px; font-weight: 700; font-size: 13px; margin-bottom: 22px;
+  }
+  .vip-pill.active {
+    background: linear-gradient(135deg, #ffb42e30, #ff5d7a30); border: 1px solid #ffb42e60;
+    color: #ffcf7d;
+  }
+  .vip-pill.inactive {
+    background: var(--panel-hi); border: 1px solid var(--line); color: var(--muted);
+  }
+  .profile-actions { display: flex; flex-direction: column; gap: 10px; }
+  .login-widget-wrap { display: flex; justify-content: center; margin-top: 10px; }
+
+  /* ---- video modal (saytda, Telegram'ga chiqmasdan tomosha) ---- */
+  .video-modal {
+    position: fixed; inset: 0; z-index: 100; background: #06060cd8;
+    backdrop-filter: blur(6px);
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  .video-modal.open { display: flex; }
+  .video-modal .box {
+    width: 100%; max-width: 520px; background: #0b0a17; border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; box-shadow: 0 40px 90px -20px #000000e0;
+  }
+  .video-modal .box-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; border-bottom: 1px solid var(--line-soft);
+    font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--muted);
+  }
+  .video-modal .box-head button {
+    background: none; border: none; color: var(--muted); font-size: 20px;
+    cursor: pointer; line-height: 1; padding: 0 4px;
+  }
+  .video-modal .box-head button:hover { color: var(--ink); }
+  .video-modal iframe { width: 100%; aspect-ratio: 9/16; max-height: 75vh; border: none; display: block; }
 """
 
 
 SCRIPTS = """
   (function () {
+    // ---- theme toggle (dark/light) ----
+    function applyThemeIcon() {
+      var btn = document.getElementById('theme-toggle');
+      if (!btn) return;
+      var t = document.documentElement.getAttribute('data-theme') || 'dark';
+      btn.textContent = t === 'dark' ? '\\u{1F319}' : '\\u2600\\uFE0F';
+    }
+    window.toggleTheme = function () {
+      var html = document.documentElement;
+      var cur = html.getAttribute('data-theme') || 'dark';
+      var next = cur === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+      applyThemeIcon();
+    };
+    applyThemeIcon();
+
+    // ---- video modal (saytda tomosha qilish, Telegram'ga chiqmasdan) ----
+    window.openPlayer = function (url) {
+      var modal = document.getElementById('video-modal');
+      var frame = document.getElementById('video-modal-frame');
+      if (!modal || !frame) return;
+      frame.src = url;
+      modal.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    };
+    window.closePlayer = function () {
+      var modal = document.getElementById('video-modal');
+      var frame = document.getElementById('video-modal-frame');
+      if (!modal || !frame) return;
+      modal.classList.remove('open');
+      frame.src = '';
+      document.body.style.overflow = '';
+    };
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') window.closePlayer();
+    });
+
     // ---- starfield: twinkling stars + occasional shooting stars ----
     var field = document.getElementById('starfield');
     if (field) {
@@ -566,7 +754,7 @@ SCRIPTS = """
 """
 
 
-def base_page(title: str, body: str, active: str = "", marquee_items=None) -> str:
+def base_page(title: str, body: str, active: str = "", marquee_items=None, session: dict | None = None) -> str:
     if not marquee_items:
         marquee_items = [
             "YANGI QISMLAR MUNTAZAM YUKLANADI",
@@ -575,6 +763,14 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None) -> st
         ]
     track = " &nbsp;&#10022;&nbsp; ".join(html.escape(m) for m in marquee_items)
     marquee_html = f'<span>{track}</span> &nbsp;&#10022;&nbsp; <span>{track}</span>'
+
+    if session:
+        display_name = html.escape(session.get("first_name") or session.get("username") or "Profil")
+        avatar = session.get("photo_url") or ""
+        avatar_tag = f'<img src="{html.escape(avatar)}" alt="">' if avatar else ""
+        profile_chip = f'<a class="profile-chip" href="/profil">{avatar_tag}<span>{display_name}</span></a>'
+    else:
+        profile_chip = '<a class="profile-chip" href="/profil"><span>👤 Kirish</span></a>'
 
     return f"""<!DOCTYPE html>
 <html lang="uz">
@@ -585,6 +781,14 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None) -> st
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⭐</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+  (function () {{
+    try {{
+      var t = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    }} catch (e) {{}}
+  }})();
+</script>
 <style>{STYLES}</style>
 </head>
 <body>
@@ -609,6 +813,10 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None) -> st
       </form>
       <div id="live-results" class="live-results"></div>
     </div>
+    <div class="header-actions">
+      <button id="theme-toggle" class="icon-btn" onclick="toggleTheme()" title="Ko'rinishni almashtirish">🌙</button>
+      {profile_chip}
+    </div>
   </div>
 </header>
 <main>
@@ -619,6 +827,15 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None) -> st
   <div style="margin-top:6px">o'zbek tilidagi anime dublyaj jamoasi. Barcha epizodlarni
   <a href="https://t.me/{BOT_USERNAME}">Telegram botimiz</a> orqali tomosha qiling.</div>
 </footer>
+<div id="video-modal" class="video-modal">
+  <div class="box">
+    <div class="box-head">
+      <span>▶ TOMOSHA QILISH</span>
+      <button onclick="closePlayer()">✕</button>
+    </div>
+    <iframe id="video-modal-frame" src="" allowfullscreen></iframe>
+  </div>
+</div>
 <script>{SCRIPTS}</script>
 </body>
 </html>"""
@@ -706,7 +923,10 @@ async def home(request):
 <h2 class="section"><span class="ic">&#9642;</span> Barcha animelar <span class="count">{total}</span></h2>
 {grid}
 """
-    return web.Response(text=base_page("Bosh sahifa", body, active="home", marquee_items=marquee_items), content_type="text/html")
+    return web.Response(
+        text=base_page("Bosh sahifa", body, active="home", marquee_items=marquee_items, session=get_session(request)),
+        content_type="text/html",
+    )
 
 
 async def genres_page(request):
@@ -716,7 +936,7 @@ async def genres_page(request):
 <h2 class="section"><span class="ic">&#10022;</span> Janrlar <span class="count">{len(genres)}</span></h2>
 <div class="genres">{links or "<p class='empty'>Janrlar topilmadi.</p>"}</div>
 """
-    return web.Response(text=base_page("Janrlar", body, active="janrlar"), content_type="text/html")
+    return web.Response(text=base_page("Janrlar", body, active="janrlar", session=get_session(request)), content_type="text/html")
 
 
 async def genre_detail(request):
@@ -732,7 +952,32 @@ async def genre_detail(request):
         grid = '<p class="empty">Bu janrda animelar topilmadi.</p>'
 
     body = f'<h2 class="section"><span class="ic">&#10022;</span> {html.escape(genre)} <span class="count">{total}</span></h2>{grid}'
-    return web.Response(text=base_page(genre, body), content_type="text/html")
+    return web.Response(text=base_page(genre, body, session=get_session(request)), content_type="text/html")
+
+
+async def _smart_search(q: str, limit: int = 60):
+    """Ham nom (LIKE, qisman moslik bilan), ham kod (ID) bo'yicha qidiradi.
+    Nom ustuvor -- foydalanuvchi anime nomining faqat bir qismini yozsa ham topiladi.
+    Agar anime nomi raqamlardan iborat bo'lsa (masalan '111'), bu ham to'g'ri ishlaydi,
+    chunki avval nom bo'yicha LIKE qidiruv, keyin (agar kerak bo'lsa) ID bo'yicha
+    qo'shimcha moslik qo'shiladi."""
+    q = q.strip()
+    seen = set()
+    results = []
+
+    title_matches = await db.search_anime(q, limit=limit)
+    for a in title_matches:
+        if a["id"] not in seen:
+            results.append(a)
+            seen.add(a["id"])
+
+    if q.isdigit() and len(results) < limit:
+        anime = await db.get_anime(int(q))
+        if anime and anime["id"] not in seen:
+            results.append(anime)
+            seen.add(anime["id"])
+
+    return results
 
 
 async def search_page(request):
@@ -740,11 +985,7 @@ async def search_page(request):
     if not q:
         return web.HTTPFound("/")
 
-    if q.isdigit():
-        anime = await db.get_anime(int(q))
-        rows = [anime] if anime else []
-    else:
-        rows = await db.search_anime(q, limit=60)
+    rows = await _smart_search(q, limit=60)
 
     if rows:
         grid = f'<div class="grid">{"".join(anime_card_html(a) for a in rows)}</div>'
@@ -752,20 +993,16 @@ async def search_page(request):
         grid = '<p class="empty">Hech narsa topilmadi. Nomning bir qismini yozib ko\'ring.</p>'
 
     body = f'<h2 class="section"><span class="ic">&gt;_</span> "{html.escape(q)}" bo\'yicha natijalar <span class="count">{len(rows)}</span></h2>{grid}'
-    return web.Response(text=base_page(f"Qidiruv: {q}", body), content_type="text/html")
+    return web.Response(text=base_page(f"Qidiruv: {q}", body, session=get_session(request)), content_type="text/html")
 
 
 async def api_search(request):
     """Live-qidiruv uchun JSON API — foydalanuvchi yozayotganda ishlaydi."""
     q = request.query.get("q", "").strip()
-    if len(q) < 2:
+    if len(q) < 1:
         return web.json_response([])
 
-    if q.isdigit():
-        anime = await db.get_anime(int(q))
-        rows = [anime] if anime else []
-    else:
-        rows = await db.search_anime(q, limit=8)
+    rows = await _smart_search(q, limit=8)
 
     results = [
         {
@@ -803,6 +1040,9 @@ async def anime_detail(request):
     if not anime:
         raise web.HTTPNotFound()
 
+    session = get_session(request)
+    user_is_vip = await db.is_vip(session["id"]) if session else False
+
     episodes = await db.get_episodes(anime_id)
     poster = f"/poster/{anime['id']}" if anime["poster_file_id"] else ""
     poster_tag = (
@@ -819,19 +1059,36 @@ async def anime_detail(request):
     if anime["vip_only"]:
         tags += '<span class="tag" style="border-color:#ff5d7a;color:#ff5d7a">🔒 VIP-only</span>'
 
-    if anime["vip_only"]:
-        body_episodes = (
-            '<div class="lock-notice">🔒 Bu anime faqat <b>VIP</b> foydalanuvchilar uchun. '
-            f'VIP status olish uchun <a href="https://t.me/{BOT_USERNAME}">botga</a> '
-            'yozing.</div>'
-        )
+    if anime["vip_only"] and not user_is_vip:
+        if session:
+            lock_msg = (
+                "🔒 Bu anime faqat <b>VIP</b> foydalanuvchilar uchun. Sizda hozircha VIP "
+                f'status yo\'q — olish uchun <a href="https://t.me/{BOT_USERNAME}">botga</a> yozing.'
+            )
+        else:
+            lock_msg = (
+                '🔒 Bu anime faqat <b>VIP</b> foydalanuvchilar uchun. '
+                f'<a href="/profil">Profilingizga kiring</a>, agar VIP statusingiz bo\'lsa shu yerda ko\'rasiz, '
+                f'aks holda VIP olish uchun <a href="https://t.me/{BOT_USERNAME}">botga</a> yozing.'
+            )
+        body_episodes = f'<div class="lock-notice">{lock_msg}</div>'
     elif episodes:
-        buttons = "".join(
-            f'<a class="ep-btn" href="https://t.me/{BOT_USERNAME}?start=ep_{anime_id}_{ep["episode_number"]}">'
-            f'<span class="play-ic">▶</span><span class="num">{ep["episode_number"]:02d}</span> {ep["episode_number"]}-qism</a>'
-            for ep in episodes
-        )
-        body_episodes = f'<div class="episodes">{buttons}</div>'
+        btns = []
+        for ep in episodes:
+            if ep["channel_message_id"] and STORAGE_CHANNEL_USERNAME:
+                embed_url = f"https://t.me/{STORAGE_CHANNEL_USERNAME}/{ep['channel_message_id']}?embed=1"
+                btns.append(
+                    f'<button type="button" class="ep-btn" onclick="openPlayer(\'{embed_url}\')">'
+                    f'<span class="play-ic">▶</span><span class="num">{ep["episode_number"]:02d}</span> '
+                    f'{ep["episode_number"]}-qism</button>'
+                )
+            else:
+                btns.append(
+                    f'<a class="ep-btn" href="https://t.me/{BOT_USERNAME}?start=ep_{anime_id}_{ep["episode_number"]}">'
+                    f'<span class="play-ic">▶</span><span class="num">{ep["episode_number"]:02d}</span> '
+                    f'{ep["episode_number"]}-qism</a>'
+                )
+        body_episodes = f'<div class="episodes">{"".join(btns)}</div>'
     else:
         body_episodes = '<p class="empty" style="text-align:left">Hali epizod qo\'shilmagan.</p>'
 
@@ -847,7 +1104,7 @@ async def anime_detail(request):
   </div>
 </div>
 """
-    return web.Response(text=base_page(anime["title"], body), content_type="text/html")
+    return web.Response(text=base_page(anime["title"], body, session=session), content_type="text/html")
 
 
 async def poster_proxy(request):
@@ -874,6 +1131,93 @@ async def ping(request):
     return web.Response(text="STAR DUBBING bot va sayt ishlayapti ✅")
 
 
+# ---------- PROFIL (TELEGRAM LOGIN WIDGET) ----------
+
+async def profile_page(request):
+    session = get_session(request)
+
+    if session:
+        vip = await db.get_vip(session["id"])
+        if vip:
+            vip_text = f"👑 VIP faol — muddati: {vip['expires_at'][:10]}" if vip["expires_at"] else "👑 VIP faol — umrbod ♾"
+            vip_html = f'<div class="vip-pill active">{html.escape(vip_text)}</div>'
+        else:
+            vip_html = '<div class="vip-pill inactive">VIP emas</div>'
+
+        avatar = session.get("photo_url") or ""
+        avatar_tag = (
+            f'<img class="avatar" src="{html.escape(avatar)}" alt="">'
+            if avatar else '<div class="avatar" style="background:var(--panel-hi)"></div>'
+        )
+        uname = f"@{session['username']}" if session.get("username") else f"ID: {session['id']}"
+
+        body = f"""
+<div class="profile-card">
+  {avatar_tag}
+  <h1>{html.escape(session.get('first_name') or 'Foydalanuvchi')}</h1>
+  <div class="uname mono">{html.escape(uname)}</div>
+  {vip_html}
+  <div class="profile-actions">
+    <a class="cta-secondary" href="https://t.me/{BOT_USERNAME}">📲 Botni ochish</a>
+    <a class="cta-secondary" href="/logout">🚪 Chiqish</a>
+  </div>
+</div>
+"""
+    else:
+        body = f"""
+<div class="profile-card">
+  <h1>Profilga kirish</h1>
+  <p style="color:var(--muted); font-size:14px; margin-bottom:22px; max-width:340px; margin-left:auto; margin-right:auto">
+    Telegram hisobingiz orqali kiring — VIP holatingizni shu yerdan ko'rib turasiz.
+  </p>
+  <div class="login-widget-wrap">
+    <script async src="https://telegram.org/js/telegram-widget.js?22"
+      data-telegram-login="{BOT_USERNAME}"
+      data-size="large"
+      data-userpic="true"
+      data-radius="10"
+      data-auth-url="/profil/callback"
+      data-request-access="write"></script>
+  </div>
+</div>
+"""
+    return web.Response(text=base_page("Profil", body, active="profil", session=session), content_type="text/html")
+
+
+async def profile_callback(request):
+    data = dict(request.query)
+    if not data.get("hash") or not _telegram_check_hash(data):
+        return web.Response(
+            text=base_page(
+                "Xatolik",
+                '<div class="profile-card"><h1>Tasdiqlash muvaffaqiyatsiz</h1>'
+                '<p style="color:var(--muted)">Iltimos, qaytadan urining.</p>'
+                '<div class="profile-actions"><a class="cta-secondary" href="/profil">⬅ Qaytish</a></div></div>',
+            ),
+            content_type="text/html",
+            status=403,
+        )
+
+    session_payload = {
+        "id": int(data["id"]),
+        "first_name": data.get("first_name", ""),
+        "username": data.get("username", ""),
+        "photo_url": data.get("photo_url", ""),
+    }
+    resp = web.HTTPFound("/profil")
+    resp.set_cookie(
+        "session", make_session_cookie(session_payload),
+        max_age=SESSION_MAX_AGE, httponly=True, samesite="Lax",
+    )
+    return resp
+
+
+async def logout(request):
+    resp = web.HTTPFound("/")
+    resp.del_cookie("session")
+    return resp
+
+
 def create_app(bot) -> web.Application:
     app = web.Application()
     app["bot"] = bot
@@ -882,6 +1226,9 @@ def create_app(bot) -> web.Application:
     app.router.add_get("/janrlar", genres_page)
     app.router.add_get("/janr/{name}", genre_detail)
     app.router.add_get("/qidiruv", search_page)
+    app.router.add_get("/profil", profile_page)
+    app.router.add_get("/profil/callback", profile_callback)
+    app.router.add_get("/logout", logout)
     app.router.add_get("/api/search", api_search)
     app.router.add_get("/tasodifiy", random_anime)
     app.router.add_get("/anime/{id}", anime_detail)
