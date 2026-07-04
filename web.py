@@ -31,125 +31,214 @@ def base_page(title: str, body: str, active: str = "") -> str:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{html.escape(title)} — STAR DUBBING</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⭐</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {{
-    --bg: #0f0f14;
-    --card: #1a1a24;
-    --card-hover: #22222f;
-    --text: #eaeaf0;
-    --muted: #9a9aad;
-    --accent: {ACCENT};
+    --bg: #0a0a0f;
+    --bg2: #0d0d14;
+    --card: #15151f;
+    --card-hover: #1c1c29;
+    --border: #24243a;
+    --text: #f2f2f7;
+    --muted: #8f8fa3;
+    --accent: #8b6bff;
     --accent2: #ff5c9d;
+    --accent3: #34e0c6;
   }}
   * {{ box-sizing: border-box; }}
+  html {{ scroll-behavior: smooth; }}
   body {{
     margin: 0;
-    background: var(--bg);
+    background:
+      radial-gradient(1200px 600px at 15% -10%, #241a4a55, transparent 60%),
+      radial-gradient(1000px 500px at 90% 0%, #4a1a3855, transparent 60%),
+      var(--bg);
     color: var(--text);
-    font-family: 'Segoe UI', Tahoma, sans-serif;
-    line-height: 1.5;
+    font-family: 'Manrope', 'Segoe UI', sans-serif;
+    line-height: 1.6;
+    min-height: 100vh;
   }}
+  ::selection {{ background: var(--accent); color: white; }}
+  ::-webkit-scrollbar {{ width: 10px; }}
+  ::-webkit-scrollbar-track {{ background: var(--bg); }}
+  ::-webkit-scrollbar-thumb {{ background: #2c2c40; border-radius: 10px; }}
   a {{ color: inherit; text-decoration: none; }}
+
   header {{
-    position: sticky; top: 0; z-index: 10;
-    background: rgba(15,15,20,0.9);
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid #26263a;
-    padding: 14px 24px;
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(10,10,15,0.72);
+    backdrop-filter: blur(14px) saturate(140%);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 32px;
     display: flex; align-items: center; justify-content: space-between;
-    gap: 16px; flex-wrap: wrap;
+    gap: 20px; flex-wrap: wrap;
   }}
   .logo {{
-    font-weight: 800; font-size: 20px; letter-spacing: 0.5px;
-    background: linear-gradient(90deg, var(--accent), var(--accent2));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }}
-  nav {{ display: flex; gap: 18px; font-size: 14px; }}
-  nav a {{ color: var(--muted); padding: 6px 0; border-bottom: 2px solid transparent; }}
-  nav a.active, nav a:hover {{ color: var(--text); border-color: var(--accent); }}
-  .search-box {{
+    font-weight: 800; font-size: 21px; letter-spacing: 0.3px;
     display: flex; align-items: center; gap: 8px;
-    background: var(--card); border: 1px solid #2c2c3d; border-radius: 999px;
-    padding: 8px 16px; min-width: 220px;
+    background: linear-gradient(120deg, var(--accent), var(--accent2) 60%, var(--accent3));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    background-size: 200% auto;
+    animation: shine 6s linear infinite;
   }}
+  @keyframes shine {{ to {{ background-position: 200% center; }} }}
+  nav {{ display: flex; gap: 6px; font-size: 14px; }}
+  nav a {{
+    color: var(--muted); padding: 8px 16px; border-radius: 999px;
+    transition: all .2s;
+  }}
+  nav a.active, nav a:hover {{ color: var(--text); background: var(--card); }}
+  .search-box {{
+    display: flex; align-items: center; gap: 10px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 999px;
+    padding: 10px 18px; min-width: 240px;
+    transition: border-color .2s;
+  }}
+  .search-box:focus-within {{ border-color: var(--accent); }}
   .search-box input {{
     background: transparent; border: none; outline: none; color: var(--text);
-    font-size: 14px; width: 100%;
+    font-size: 14px; width: 100%; font-family: inherit;
   }}
-  main {{ max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }}
+  .search-box input::placeholder {{ color: var(--muted); }}
+
+  main {{ max-width: 1180px; margin: 0 auto; padding: 0 28px 70px; }}
+
   .hero {{
-    text-align: center; padding: 40px 16px 32px;
+    text-align: center; padding: 72px 16px 44px; position: relative;
+  }}
+  .hero .eyebrow {{
+    display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+    color: var(--accent3); text-transform: uppercase; margin-bottom: 14px;
+    padding: 6px 14px; border: 1px solid #34e0c640; border-radius: 999px;
+    background: #34e0c60d;
   }}
   .hero h1 {{
-    font-size: 30px; margin: 0 0 8px;
+    font-size: clamp(28px, 5vw, 44px); margin: 0 0 14px; font-weight: 800;
+    letter-spacing: -0.5px;
   }}
-  .hero p {{ color: var(--muted); margin: 0; }}
+  .hero p {{ color: var(--muted); margin: 0 auto; max-width: 480px; font-size: 15px; }}
   .cta {{
-    display: inline-block; margin-top: 18px; padding: 12px 26px;
-    background: linear-gradient(90deg, var(--accent), var(--accent2));
-    color: white; border-radius: 999px; font-weight: 600; font-size: 14px;
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 26px; padding: 14px 30px;
+    background: linear-gradient(120deg, var(--accent), var(--accent2));
+    color: white; border-radius: 999px; font-weight: 700; font-size: 14px;
+    box-shadow: 0 8px 30px -8px #8b6bff80;
+    transition: transform .2s, box-shadow .2s;
   }}
-  h2.section {{ font-size: 18px; color: var(--muted); font-weight: 600;
-    margin: 32px 0 16px; text-transform: uppercase; letter-spacing: 1px; }}
+  .cta:hover {{ transform: translateY(-2px); box-shadow: 0 12px 36px -6px #8b6bffa0; }}
+
+  h2.section {{
+    font-size: 13px; color: var(--muted); font-weight: 700;
+    margin: 46px 0 18px; text-transform: uppercase; letter-spacing: 2px;
+    display: flex; align-items: center; gap: 10px;
+  }}
+  h2.section::after {{ content: ""; flex: 1; height: 1px; background: var(--border); }}
+
   .grid {{
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 18px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+    gap: 20px;
   }}
   .card {{
-    background: var(--card); border-radius: 14px; overflow: hidden;
-    border: 1px solid #24243350; transition: transform .15s, background .15s;
-    position: relative;
+    background: var(--card); border-radius: 16px; overflow: hidden;
+    border: 1px solid var(--border);
+    transition: transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s, border-color .22s;
+    position: relative; display: block;
   }}
-  .card:hover {{ transform: translateY(-4px); background: var(--card-hover); }}
+  .card:hover {{
+    transform: translateY(-6px);
+    border-color: #3a3a56;
+    box-shadow: 0 20px 40px -18px #00000090;
+  }}
+  .card .poster-wrap {{ position: relative; overflow: hidden; aspect-ratio: 2/3; background: #1c1c29; }}
   .card .poster {{
-    width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block;
-    background: #26263a;
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    transition: transform .4s;
   }}
-  .card .info {{ padding: 10px 12px 14px; }}
-  .card .info .t {{ font-size: 14px; font-weight: 600; margin: 0 0 4px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+  .card:hover .poster {{ transform: scale(1.06); }}
+  .card .poster-wrap.empty::before {{
+    content: "🎬"; position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center; font-size: 40px; opacity: .25;
+  }}
+  .card .poster-wrap::after {{
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent 60%, #00000090);
+  }}
+  .card .info {{ padding: 12px 14px 16px; }}
+  .card .info .t {{
+    font-size: 14px; font-weight: 700; margin: 0 0 4px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }}
   .card .info .m {{ font-size: 12px; color: var(--muted); }}
   .badge-vip {{
-    position: absolute; top: 8px; left: 8px; background: #ffb42e; color: #211900;
-    font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+    position: absolute; top: 10px; left: 10px; z-index: 2;
+    background: linear-gradient(120deg, #ffb42e, #ff7b54); color: #211900;
+    font-size: 10.5px; font-weight: 800; padding: 4px 10px; border-radius: 999px;
+    box-shadow: 0 4px 14px -4px #ffb42e80;
   }}
-  .empty {{ color: var(--muted); text-align: center; padding: 60px 0; }}
-  .pager {{ display: flex; justify-content: center; gap: 10px; margin-top: 28px; }}
+  .empty {{ color: var(--muted); text-align: center; padding: 70px 0; font-size: 14px; }}
+  .pager {{ display: flex; justify-content: center; gap: 12px; margin-top: 36px; }}
   .pager a {{
-    background: var(--card); border: 1px solid #2c2c3d; padding: 8px 16px;
-    border-radius: 10px; font-size: 14px;
+    background: var(--card); border: 1px solid var(--border); padding: 10px 20px;
+    border-radius: 12px; font-size: 14px; font-weight: 600;
+    transition: all .2s;
   }}
-  .pager a:hover {{ border-color: var(--accent); }}
-  .genres {{ display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }}
+  .pager a:hover {{ border-color: var(--accent); background: var(--card-hover); }}
+  .genres {{ display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 0; }}
   .genres a {{
-    background: var(--card); border: 1px solid #2c2c3d; padding: 6px 14px;
-    border-radius: 999px; font-size: 13px; color: var(--muted);
+    background: var(--card); border: 1px solid var(--border); padding: 8px 18px;
+    border-radius: 999px; font-size: 13px; color: var(--muted); font-weight: 600;
+    transition: all .2s;
   }}
-  .genres a:hover {{ color: var(--text); border-color: var(--accent); }}
+  .genres a:hover {{ color: var(--text); border-color: var(--accent); background: var(--card-hover); }}
 
   /* Anime detail page */
-  .detail {{ display: flex; gap: 28px; flex-wrap: wrap; }}
-  .detail .poster-big {{ width: 240px; border-radius: 16px; flex-shrink: 0;
-    aspect-ratio: 2/3; object-fit: cover; background: #26263a; }}
-  .detail .meta h1 {{ margin: 0 0 8px; font-size: 26px; }}
-  .detail .meta .tags {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }}
-  .tag {{ background: var(--card); border: 1px solid #2c2c3d; padding: 4px 12px;
-    border-radius: 999px; font-size: 12px; color: var(--muted); }}
-  .detail .meta p.desc {{ color: #cfcfe0; max-width: 640px; }}
-  .episodes {{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }}
+  .detail {{ display: flex; gap: 36px; flex-wrap: wrap; padding-top: 20px; }}
+  .detail .poster-big-wrap {{
+    width: 260px; flex-shrink: 0; border-radius: 20px; overflow: hidden;
+    aspect-ratio: 2/3; background: #1c1c29;
+    box-shadow: 0 30px 60px -24px #000000a0;
+    border: 1px solid var(--border);
+  }}
+  .detail .poster-big {{ width: 100%; height: 100%; object-fit: cover; display: block; }}
+  .detail .meta {{ flex: 1; min-width: 260px; }}
+  .detail .meta h1 {{ margin: 0 0 14px; font-size: 30px; font-weight: 800; letter-spacing: -0.5px; }}
+  .detail .meta .tags {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }}
+  .tag {{
+    background: var(--card); border: 1px solid var(--border); padding: 5px 14px;
+    border-radius: 999px; font-size: 12.5px; color: var(--muted); font-weight: 600;
+  }}
+  .detail .meta p.desc {{ color: #c7c7d8; max-width: 640px; font-size: 15px; }}
+  .episodes {{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }}
   .ep-btn {{
-    background: var(--card); border: 1px solid #2c2c3d; padding: 10px 18px;
-    border-radius: 10px; font-size: 14px; font-weight: 600;
-    display: flex; align-items: center; gap: 6px;
+    background: var(--card); border: 1px solid var(--border); padding: 12px 20px;
+    border-radius: 12px; font-size: 14px; font-weight: 700;
+    display: flex; align-items: center; gap: 8px;
+    transition: all .2s;
   }}
-  .ep-btn:hover {{ border-color: var(--accent); background: var(--card-hover); }}
+  .ep-btn:hover {{
+    border-color: var(--accent); background: linear-gradient(120deg, #8b6bff22, #ff5c9d22);
+    transform: translateY(-2px);
+  }}
   .lock-notice {{
-    background: #241a10; border: 1px solid #ffb42e40; color: #ffcf7d;
-    padding: 16px 20px; border-radius: 12px; margin-top: 18px; font-size: 14px;
+    background: linear-gradient(120deg, #2a1f10, #241a10);
+    border: 1px solid #ffb42e40; color: #ffcf7d;
+    padding: 18px 22px; border-radius: 14px; margin-top: 22px; font-size: 14px;
   }}
+  .lock-notice a {{ font-weight: 700; text-decoration: underline; }}
+
   footer {{
     text-align: center; color: var(--muted); font-size: 13px;
-    padding: 30px 16px; border-top: 1px solid #24243350; margin-top: 40px;
+    padding: 40px 16px; border-top: 1px solid var(--border); margin-top: 50px;
+  }}
+
+  @media (max-width: 560px) {{
+    header {{ padding: 12px 16px; }}
+    main {{ padding: 0 16px 50px; }}
+    .search-box {{ min-width: 0; width: 100%; order: 3; }}
+    .detail {{ gap: 22px; }}
+    .detail .poster-big-wrap {{ width: 180px; }}
   }}
 </style>
 </head>
@@ -171,7 +260,7 @@ def base_page(title: str, body: str, active: str = "") -> str:
 </main>
 <footer>
   © STAR DUBBING — o'zbek tilidagi anime dublyaj jamoasi. Barcha epizodlarni
-  <a href="https://t.me/{BOT_USERNAME}" style="color:var(--accent)">Telegram botimiz</a> orqali tomosha qiling.
+  <a href="https://t.me/{BOT_USERNAME}" style="color:var(--accent); font-weight:700">Telegram botimiz</a> orqali tomosha qiling.
 </footer>
 </body>
 </html>"""
@@ -180,8 +269,8 @@ def base_page(title: str, body: str, active: str = "") -> str:
 def anime_card_html(a) -> str:
     poster = f"/poster/{a['id']}" if a["poster_file_id"] else ""
     poster_tag = (
-        f'<img class="poster" src="{poster}" alt="{html.escape(a["title"])}" loading="lazy">'
-        if poster else '<div class="poster"></div>'
+        f'<div class="poster-wrap"><img class="poster" src="{poster}" alt="{html.escape(a["title"])}" loading="lazy"></div>'
+        if poster else '<div class="poster-wrap empty"></div>'
     )
     vip_badge = '<span class="badge-vip">👑 VIP</span>' if a["vip_only"] else ""
     return f"""<a class="card" href="/anime/{a['id']}">
@@ -227,10 +316,11 @@ async def home(request):
 
     body = f"""
 <section class="hero">
-  <h1>O'zbek tilidagi anime dublyajlari</h1>
-  <p>Sevimli animelaringizni sifatli dublyaj bilan tomosha qiling</p>
+  <span class="eyebrow">O'zbek tilida dublyaj</span>
+  <h1>Sevimli animelaringizni<br>sifatli dublyaj bilan tomosha qiling</h1>
+  <p>Yangi qismlar muntazam qo'shib boriladi — Telegram botimiz orqali istalgan joyda tomosha qiling</p>
   <a class="cta" href="https://t.me/{BOT_USERNAME}">📲 Telegram botni ochish</a>
-  <div class="genres" style="justify-content:center; margin-top:20px">{genre_links}</div>
+  <div class="genres" style="justify-content:center; margin-top:26px">{genre_links}</div>
 </section>
 <h2 class="section">Barcha animelar ({total})</h2>
 {grid}
@@ -297,7 +387,8 @@ async def anime_detail(request):
     episodes = await db.get_episodes(anime_id)
     poster = f"/poster/{anime['id']}" if anime["poster_file_id"] else ""
     poster_tag = (
-        f'<img class="poster-big" src="{poster}" alt="">' if poster else '<div class="poster-big"></div>'
+        f'<div class="poster-big-wrap"><img class="poster-big" src="{poster}" alt=""></div>'
+        if poster else '<div class="poster-big-wrap"></div>'
     )
 
     tags = "".join(
