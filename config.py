@@ -20,6 +20,10 @@ DB_PATH = os.getenv("DB_PATH", "anisinus.db")
 
 PAGE_SIZE = 8  # bitta sahifada nechta anime/epizod ko'rsatish
 
+# Botning @username'i (t.me/USERNAME). Sayt shu orqali Telegram'ga link beradi.
+# .env faylida BOT_USERNAME=STAR_DUBBING_bot kabi (@ belgisisiz) kiritiladi.
+BOT_USERNAME = os.getenv("BOT_USERNAME", "")
+
 # Majburiy obuna kanallari — to'g'ridan-to'g'ri shu yerda (kodda) belgilanadi.
 # chat_id: kanal username (@ bilan) yoki -100... ko'rinishidagi ID.
 # Bot bu kanallarda ADMIN bo'lishi shart, aks holda obunani tekshira olmaydi.

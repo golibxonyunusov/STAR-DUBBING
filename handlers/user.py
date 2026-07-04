@@ -1,5 +1,5 @@
 from aiogram import Router, F, Bot
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, CommandObject
 from aiogram.types import Message, CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 
@@ -58,12 +58,31 @@ async def send_subscribe_prompt(message: Message):
 # ---------- START ----------
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, bot: Bot):
+async def cmd_start(message: Message, bot: Bot, command: CommandObject):
     await db.add_user(message.from_user.id, message.from_user.username or "", message.from_user.full_name)
 
     if not await check_subscription(bot, message.from_user.id):
         await send_subscribe_prompt(message)
         return
+
+    payload = command.args  # sayt orqali kelgan bo'lsa: "ep_3_1" yoki "anime_3"
+
+    if payload:
+        if payload.startswith("ep_"):
+            try:
+                _, anime_id_str, ep_num_str = payload.split("_")
+                await deliver_episode(message, int(anime_id_str), int(ep_num_str), message.from_user.id)
+                return
+            except (ValueError, IndexError):
+                pass
+        elif payload.startswith("anime_"):
+            try:
+                anime_id = int(payload.split("_")[1])
+                await render_anime_card(message, anime_id, message.from_user.id)
+                await message.answer("Asosiy menyu:", reply_markup=main_menu_kb())
+                return
+            except (ValueError, IndexError):
+                pass
 
     await message.answer(
         "🎌 <b>AniSinus</b> ga xush kelibsiz!\n\n"
@@ -202,7 +221,7 @@ async def vip_status(message: Message):
             "VIP status orqali:\n"
             "✅ Majburiy obunasiz botdan foydalanish\n"
             "✅ Yopiq (VIP-only) animelarni ko'rish imkoniga ega bo'lasiz\n\n"
-            "VIP olish uchun @rudeus1111 bilan bog'laning."
+            "VIP olish uchun admin bilan bog'laning."
         )
 
 
@@ -291,6 +310,34 @@ async def show_episodes(call: CallbackQuery):
     await call.answer()
 
 
+async def deliver_episode(message: Message, anime_id: int, ep_num: int, user_id: int) -> bool:
+    """Epizodni yuboradi (Message yoki CallbackQuery.message bo'lishi mumkin)."""
+    anime = await db.get_anime(anime_id)
+    if not anime:
+        await message.answer("Anime topilmadi.")
+        return False
+
+    if anime["vip_only"] and not await db.is_vip(user_id):
+        await message.answer("🔒 Bu anime faqat VIP foydalanuvchilar uchun.")
+        return False
+
+    episode = await db.get_episode_by_number(anime_id, ep_num)
+    if not episode:
+        await message.answer("Bu epizod topilmadi.")
+        return False
+
+    total_eps = await db.get_episodes_count(anime_id)
+    has_prev = await db.get_episode_by_number(anime_id, ep_num - 1) is not None
+    has_next = await db.get_episode_by_number(anime_id, ep_num + 1) is not None
+
+    await message.answer_video(
+        episode["file_id"],
+        caption=f"🎬 <b>{anime['title']}</b>\n{ep_num}-qism / {total_eps}",
+        reply_markup=episode_nav_kb(anime_id, ep_num, has_prev, has_next),
+    )
+    return True
+
+
 @router.callback_query(F.data.startswith("ep_"))
 async def send_episode(call: CallbackQuery, bot: Bot):
     if not await check_subscription(bot, call.from_user.id):
@@ -299,31 +346,7 @@ async def send_episode(call: CallbackQuery, bot: Bot):
         return
 
     _, anime_id_str, ep_num_str = call.data.split("_")
-    anime_id, ep_num = int(anime_id_str), int(ep_num_str)
-
-    anime = await db.get_anime(anime_id)
-    if not anime:
-        await call.answer("Anime topilmadi.", show_alert=True)
-        return
-
-    if anime["vip_only"] and not await db.is_vip(call.from_user.id):
-        await call.answer("🔒 Bu anime faqat VIP foydalanuvchilar uchun.", show_alert=True)
-        return
-
-    episode = await db.get_episode_by_number(anime_id, ep_num)
-    if not episode:
-        await call.answer("Bu epizod topilmadi.", show_alert=True)
-        return
-
-    total_eps = await db.get_episodes_count(anime_id)
-    has_prev = await db.get_episode_by_number(anime_id, ep_num - 1) is not None
-    has_next = await db.get_episode_by_number(anime_id, ep_num + 1) is not None
-
-    await call.message.answer_video(
-        episode["file_id"],
-        caption=f"🎬 <b>{anime['title']}</b>\n{ep_num}-qism / {total_eps}",
-        reply_markup=episode_nav_kb(anime_id, ep_num, has_prev, has_next),
-    )
+    await deliver_episode(call.message, int(anime_id_str), int(ep_num_str), call.from_user.id)
     await call.answer()
 
 

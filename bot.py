@@ -10,35 +10,29 @@ from aiohttp import web
 from config import BOT_TOKEN
 from database import init_db
 from handlers import admin, user
+import web as website
 
 
-async def handle_ping(request):
-    # Render.com va UptimeRobot shu manzilga so'rov yuborib, botni
-    # "uyg'oq" tutish uchun ishlatadi. Oddiy javob qaytarsak yetarli.
-    return web.Response(text="AniSinus bot ishlayapti ✅")
-
-
-async def start_web_server():
+async def start_web_server(bot: Bot):
     # Render.com PORT o'zgaruvchisini avtomatik beradi. Agar mavjud bo'lmasa
-    # (masalan lokal kompyuterda ishga tushirilsa), web-server ishga
-    # tushmaydi -- botga hech qanday ta'sir qilmaydi.
+    # (masalan lokal kompyuterda ishga tushirilsa), sayt/keep-alive server
+    # ishga tushmaydi -- botga hech qanday ta'sir qilmaydi.
     port = os.getenv("PORT")
     logging.info(f"PORT muhit o'zgaruvchisi: {port!r}")
 
     if not port:
-        logging.warning("PORT topilmadi -- keep-alive server ishga tushmaydi.")
+        logging.warning("PORT topilmadi -- veb-sayt ishga tushmaydi.")
         return
 
     try:
-        app = web.Application()
-        app.router.add_get("/", handle_ping)
+        app = website.create_app(bot)
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, host="0.0.0.0", port=int(port))
         await site.start()
-        logging.info(f"✅ Keep-alive web-server 0.0.0.0:{port} portida ishga tushdi")
+        logging.info(f"✅ Veb-sayt 0.0.0.0:{port} portida ishga tushdi")
     except Exception:
-        logging.exception("❌ Keep-alive web-server ishga tushmadi:")
+        logging.exception("❌ Veb-sayt ishga tushmadi:")
 
 
 async def main():
@@ -59,7 +53,7 @@ async def main():
     dp.include_router(admin.router)
     dp.include_router(user.router)
 
-    await start_web_server()
+    await start_web_server(bot)
 
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
