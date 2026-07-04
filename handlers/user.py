@@ -221,7 +221,7 @@ async def vip_status(message: Message):
             "VIP status orqali:\n"
             "✅ Majburiy obunasiz botdan foydalanish\n"
             "✅ Yopiq (VIP-only) animelarni ko'rish imkoniga ega bo'lasiz\n\n"
-            "VIP olish uchun admin bilan bog'laning."
+            "VIP olish uchun @rudeus1111 bilan bog'laning."
         )
 
 
@@ -237,7 +237,7 @@ async def render_anime_card(message: Message, anime_id: int, user_id: int) -> bo
         await message.answer(
             f"🔒 <b>{anime['title']}</b>\n\n"
             "Bu anime faqat 👑 <b>VIP</b> foydalanuvchilar uchun ochiq.\n"
-            "VIP status olish uchun admin bilan bog'laning."
+            "VIP status olish uchun @rudeus1111 bilan bog'laning."
         )
         return True
 
