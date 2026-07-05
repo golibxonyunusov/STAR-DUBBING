@@ -20,9 +20,10 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
 def admin_menu_kb() -> ReplyKeyboardMarkup:
     kb = [
         [KeyboardButton(text="➕ Anime qo'shish"), KeyboardButton(text="🎬 Epizod qo'shish")],
-        [KeyboardButton(text="🗑 Anime o'chirish"), KeyboardButton(text="📊 Statistika")],
-        [KeyboardButton(text="📢 Xabar yuborish"), KeyboardButton(text="📡 Kanal sozlash")],
-        [KeyboardButton(text="👑 VIP boshqarish"), KeyboardButton(text="🔒 Anime VIP qilish")],
+        [KeyboardButton(text="🔗 Epizodni saytga bog'lash"), KeyboardButton(text="🗑 Anime o'chirish")],
+        [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="📢 Xabar yuborish")],
+        [KeyboardButton(text="📡 Kanal sozlash"), KeyboardButton(text="👑 VIP boshqarish")],
+        [KeyboardButton(text="🔒 Anime VIP qilish")],
         [KeyboardButton(text="⬅️ Foydalanuvchi menyusi")],
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)

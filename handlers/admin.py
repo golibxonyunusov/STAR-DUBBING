@@ -7,7 +7,7 @@ from aiogram.types import Message, CallbackQuery
 
 import database as db
 from config import ADMIN_IDS, PUBLIC_CHANNEL_USERNAME
-from states import AddAnime, AddEpisode, DeleteAnime, Broadcast, AddChannel, GrantVip, RemoveVip
+from states import AddAnime, AddEpisode, DeleteAnime, Broadcast, AddChannel, GrantVip, RemoveVip, LinkEpisode
 from keyboards import (
     admin_menu_kb,
     main_menu_kb,
@@ -200,6 +200,77 @@ async def add_episode_public_post(message: Message, state: FSMContext):
     await message.answer(
         f"✅ \"{anime['title']}\" — {data['episode_number']}-qism qo'shildi va saytga bog'landi!\n"
         f"🌐 Endi bu epizod saytda to'g'ridan-to'g'ri tomosha qilinadi.",
+        reply_markup=admin_menu_kb(),
+    )
+
+
+# ==================== MAVJUD EPIZODNI SAYTGA (RETROAKTIV) BOG'LASH ====================
+# Bu bo'lim "🎬 Epizod qo'shish" dan farqli o'laroq, ALLAQACHON qo'shilgan
+# epizodni (masalan, funksiya qo'shilishidan oldin yuklangan yoki /skip
+# bosilgan epizodni) ochiq kanaldagi postga keyinroq bog'lash uchun.
+
+@router.message(F.text == "🔗 Epizodni saytga bog'lash")
+async def link_episode_start(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    rows = await db.list_anime(offset=0, limit=50)
+    if not rows:
+        await message.answer("Avval anime qo'shing.")
+        return
+    await state.set_state(LinkEpisode.choose_anime)
+    await message.answer(
+        "Qaysi animening epizodini saytga bog'lamoqchisiz?",
+        reply_markup=choose_anime_kb(rows, action="linkanime"),
+    )
+
+
+@router.callback_query(LinkEpisode.choose_anime, F.data.startswith("linkanime_"))
+async def link_episode_choose_anime(call: CallbackQuery, state: FSMContext):
+    anime_id = int(call.data.split("_")[1])
+    await state.update_data(anime_id=anime_id)
+    await state.set_state(LinkEpisode.episode_number)
+    await call.message.answer("🔢 Qaysi epizod raqamini bog'lamoqchisiz? (masalan: 1):")
+    await call.answer()
+
+
+@router.message(LinkEpisode.episode_number)
+async def link_episode_number(message: Message, state: FSMContext):
+    data = await state.get_data()
+    if not message.text.strip().isdigit():
+        await message.answer("Iltimos, faqat raqam kiriting.")
+        return
+    ep_num = int(message.text.strip())
+    episode = await db.get_episode_by_number(data["anime_id"], ep_num)
+    if not episode:
+        await message.answer(f"⚠️ {ep_num}-qism topilmadi. Boshqa raqam kiriting yoki /cancel yozing.")
+        return
+    await state.update_data(episode_id=episode["id"], episode_number=ep_num)
+    await state.set_state(LinkEpisode.post_link)
+    await message.answer(
+        f"📡 Endi @{PUBLIC_CHANNEL_USERNAME} kanalidagi shu epizodning post havolasini yuboring "
+        f"(masalan: <code>https://t.me/{PUBLIC_CHANNEL_USERNAME}/123</code>)."
+    )
+
+
+@router.message(LinkEpisode.post_link)
+async def link_episode_post_link(message: Message, state: FSMContext):
+    data = await state.get_data()
+    text = (message.text or "").strip()
+    match = re.search(r"t\.me/([A-Za-z0-9_]+)/(\d+)", text)
+    if not match or match.group(1).lower() != PUBLIC_CHANNEL_USERNAME.lower():
+        await message.answer(
+            f"⚠️ Havola noto'g'ri yoki kanal @{PUBLIC_CHANNEL_USERNAME} bilan mos kelmadi. "
+            f"To'g'ri havolani qayta yuboring (masalan: <code>https://t.me/{PUBLIC_CHANNEL_USERNAME}/123</code>)."
+        )
+        return
+
+    public_msg_id = int(match.group(2))
+    await db.set_episode_public_msg(data["episode_id"], public_msg_id)
+    anime = await db.get_anime(data["anime_id"])
+    await state.clear()
+    await message.answer(
+        f"✅ \"{anime['title']}\" — {data['episode_number']}-qism saytga bog'landi!\n"
+        f"🌐 Endi u saytda to'g'ridan-to'g'ri tomosha qilinadi.",
         reply_markup=admin_menu_kb(),
     )
 

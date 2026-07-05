@@ -42,3 +42,9 @@ class RemoveVip(StatesGroup):
 
 class EditProfile(StatesGroup):
     display_name = State()
+
+
+class LinkEpisode(StatesGroup):
+    choose_anime = State()
+    episode_number = State()
+    post_link = State()
