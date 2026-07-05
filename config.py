@@ -19,7 +19,10 @@ STORAGE_CHANNEL_ID = os.getenv("STORAGE_CHANNEL_ID", "")
 DB_PATH = os.getenv("DB_PATH", "anisinus.db")
 
 # /start buyrug'ida (asosiy xush kelibsiz xabarida) tepasida ko'rsatiladigan rasm.
-WELCOME_IMAGE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "welcome.png")
+# Fayl repoda "handlers/assets/welcome.jpg" da joylashgan.
+WELCOME_IMAGE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "handlers", "assets", "welcome.jpg"
+)
 
 PAGE_SIZE = 8  # bitta sahifada nechta anime/epizod ko'rsatish
 
