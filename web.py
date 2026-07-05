@@ -809,6 +809,9 @@ def pad_marquee_items(items: list[str], min_chars: int = 260) -> list[str]:
         result += items
         guard += 1
     return result
+
+
+def pager_html(base_url: str, offset: int, total: int) -> str:
     parts = []
     if offset > 0:
         prev_offset = max(offset - PAGE_SIZE, 0)
