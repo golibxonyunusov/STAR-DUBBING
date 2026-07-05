@@ -5,7 +5,15 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.exceptions import TelegramBadRequest
 
 import database as db
-from config import PAGE_SIZE, REQUIRED_CHANNELS, SITE_URL, WELCOME_IMAGE_PATH
+from config import (
+    PAGE_SIZE,
+    REQUIRED_CHANNELS,
+    SITE_URL,
+    WELCOME_IMAGE_PATH,
+    SEARCH_IMAGE_PATH,
+    CATALOG_IMAGE_PATH,
+    GENRES_IMAGE_PATH,
+)
 from states import EditProfile
 from keyboards import (
     main_menu_kb,
@@ -24,6 +32,17 @@ router = Router()
 # Xush kelibsiz rasmining file_id keshi -- birinchi yuborilgandan keyin
 # Telegram file_id orqali qayta yuboriladi (qayta yuklash shart emas).
 _welcome_photo_file_id: str | None = None
+
+# Qidirish/Barcha animelar/Janrlar bo'limlarining rasm file_id keshi.
+_section_photo_ids: dict[str, str] = {}
+
+
+async def send_section_photo(message: Message, key: str, path: str, caption: str, reply_markup=None):
+    """Berilgan bo'lim uchun rasm + matnni birga yuboradi, file_id'ni keshlaydi."""
+    photo = _section_photo_ids.get(key) or FSInputFile(path)
+    sent = await message.answer_photo(photo=photo, caption=caption, reply_markup=reply_markup)
+    if key not in _section_photo_ids and sent.photo:
+        _section_photo_ids[key] = sent.photo[-1].file_id
 
 
 async def send_welcome_message(message: Message):
@@ -148,7 +167,17 @@ async def ask_search(message: Message, bot: Bot):
     if not await check_subscription(bot, message.from_user.id):
         await send_subscribe_prompt(message)
         return
-    await message.answer("Anime nomini kiriting:")
+    await send_section_photo(
+        message,
+        "search",
+        SEARCH_IMAGE_PATH,
+        "🔭 <b>Anime qidirish</b>\n\n"
+        "Sizga kerakli olam minglab yulduzlar orasida yashiringan bo'lishi mumkin — "
+        "lekin tashvishlanmang, biz uni birga topamiz! ✨\n\n"
+        "Animening nomini (yoki nomining bir qismini) yozib yuboring.\n\n"
+        "💡 Agar animening kodini bilsangiz (masalan <code>5</code>), "
+        "to'g'ridan-to'g'ri shu raqamni yuborsangiz ham bo'ladi — bot uni darhol topib beradi.",
+    )
 
 
 @router.message(F.text == "🌌 Barcha animelar")
@@ -161,8 +190,15 @@ async def show_all_anime(message: Message, bot: Bot):
         await message.answer("Hozircha animelar qo'shilmagan.")
         return
     rows = await db.list_anime(offset=0, limit=PAGE_SIZE)
-    await message.answer(
-        f"🌌 Barcha animelar ({total} ta):",
+    await send_section_photo(
+        message,
+        "catalog",
+        CATALOG_IMAGE_PATH,
+        "🌌 <b>Barcha animelar katalogi</b>\n\n"
+        "Minglab olam, yuzlab qahramon — hammasi shu yerda, bir necha bosishda "
+        "tomoshangizni kutmoqda.\n\n"
+        f"📦 Jami: <b>{total} ta</b> anime\n\n"
+        "Quyidagi ro'yxatdan o'zingizga yoqqan animeni tanlang 👇",
         reply_markup=anime_list_kb(rows, 0, total),
     )
 
@@ -173,8 +209,14 @@ async def paginate_anime(call: CallbackQuery):
     total = await db.count_anime()
     rows = await db.list_anime(offset=offset, limit=PAGE_SIZE)
     try:
-        await call.message.edit_text(
-            f"🌌 Barcha animelar ({total} ta):",
+        await call.message.edit_caption(
+            caption=(
+                "🌌 <b>Barcha animelar katalogi</b>\n\n"
+                "Minglab olam, yuzlab qahramon — hammasi shu yerda, bir necha bosishda "
+                "tomoshangizni kutmoqda.\n\n"
+                f"📦 Jami: <b>{total} ta</b> anime\n\n"
+                "Quyidagi ro'yxatdan o'zingizga yoqqan animeni tanlang 👇"
+            ),
             reply_markup=anime_list_kb(rows, offset, total),
         )
     except TelegramBadRequest:
@@ -191,7 +233,16 @@ async def show_genres(message: Message, bot: Bot):
     if not genres:
         await message.answer("Hozircha janrlar mavjud emas.")
         return
-    await message.answer("🪐 Janrni tanlang:", reply_markup=genres_kb(genres))
+    await send_section_photo(
+        message,
+        "genres",
+        GENRES_IMAGE_PATH,
+        "🪐 <b>Janrlar galaktikasi</b>\n\n"
+        "Har bir janr — o'z sayyorasi: ishq-muhabbatdan tortib sirli va "
+        "qo'rqinchli dunyolargacha.\n\n"
+        "O'zingizga yoqqan janrni tanlang va o'sha olamga sayohatni boshlang 👇",
+        reply_markup=genres_kb(genres),
+    )
 
 
 @router.callback_query(F.data.startswith("genre_"))

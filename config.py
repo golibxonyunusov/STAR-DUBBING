@@ -24,6 +24,13 @@ WELCOME_IMAGE_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "handlers", "assets", "welcome.jpg"
 )
 
+# Qidirish / Barcha animelar / Janrlar tugmalari bosilganda tepasida
+# ko'rsatiladigan rasmlar (barchasi "handlers/assets/" papkasida).
+_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "handlers", "assets")
+SEARCH_IMAGE_PATH = os.path.join(_ASSETS_DIR, "search.jpg")
+CATALOG_IMAGE_PATH = os.path.join(_ASSETS_DIR, "catalog.jpg")
+GENRES_IMAGE_PATH = os.path.join(_ASSETS_DIR, "genres.jpg")
+
 PAGE_SIZE = 8  # bitta sahifada nechta anime/epizod ko'rsatish
 
 # Botning @username'i (t.me/USERNAME). Sayt shu orqali Telegram'ga link beradi.
