@@ -1,11 +1,11 @@
 from aiogram import Router, F, Bot
 from aiogram.filters import CommandStart, CommandObject
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.exceptions import TelegramBadRequest
 
 import database as db
-from config import PAGE_SIZE, REQUIRED_CHANNELS, SITE_URL
+from config import PAGE_SIZE, REQUIRED_CHANNELS, SITE_URL, WELCOME_IMAGE_PATH
 from states import EditProfile
 from keyboards import (
     main_menu_kb,
@@ -20,6 +20,26 @@ from keyboards import (
 )
 
 router = Router()
+
+# Xush kelibsiz rasmining file_id keshi -- birinchi yuborilgandan keyin
+# Telegram file_id orqali qayta yuboriladi (qayta yuklash shart emas).
+_welcome_photo_file_id: str | None = None
+
+
+async def send_welcome_message(message: Message):
+    global _welcome_photo_file_id
+    caption = (
+        "<b>STAR DUBBING</b> ga xush kelibsiz!\n\n"
+        "Bu yerda sevimli anime va animelaringizning o'zbek tilidagi dublyaj qilingan "
+        "epizodlarini topishingiz mumkin.\n\n"
+        "🔍 Qidirish orqali anime nomini yozing\n"
+        "📚 Barcha animelar bo'limidan ro'yxatni ko'ring\n"
+        "🎭 Janrlar bo'yicha tanlang"
+    )
+    photo = _welcome_photo_file_id or FSInputFile(WELCOME_IMAGE_PATH)
+    sent = await message.answer_photo(photo=photo, caption=caption, reply_markup=main_menu_kb())
+    if not _welcome_photo_file_id and sent.photo:
+        _welcome_photo_file_id = sent.photo[-1].file_id
 
 
 # ---------- MAJBURIY OBUNA ----------
@@ -106,15 +126,7 @@ async def cmd_start(message: Message, bot: Bot, command: CommandObject):
             except (ValueError, IndexError):
                 pass
 
-    await message.answer(
-        "<b>STAR DUBBING</b> ga xush kelibsiz!\n\n"
-        "Bu yerda sevimli anime va animelaringizning o'zbek tilidagi dublyaj qilingan "
-        "epizodlarini topishingiz mumkin.\n\n"
-        "🔍 Qidirish orqali anime nomini yozing\n"
-        "📚 Barcha animelar bo'limidan ro'yxatni ko'ring\n"
-        "🎭 Janrlar bo'yicha tanlang",
-        reply_markup=main_menu_kb(),
-    )
+    await send_welcome_message(message)
 
 
 @router.callback_query(F.data == "check_sub")
