@@ -10,9 +10,9 @@ from config import PAGE_SIZE
 
 def main_menu_kb() -> ReplyKeyboardMarkup:
     kb = [
-        [KeyboardButton(text="🔍 Qidirish"), KeyboardButton(text="📚 Barcha animelar")],
-        [KeyboardButton(text="🎭 Janrlar"), KeyboardButton(text="👑 VIP")],
-        [KeyboardButton(text="👤 Profil"), KeyboardButton(text="ℹ️ Bot haqida")],
+        [KeyboardButton(text="🔭 Qidirish"), KeyboardButton(text="🌌 Barcha animelar")],
+        [KeyboardButton(text="🪐 Janrlar"), KeyboardButton(text="👑 VIP")],
+        [KeyboardButton(text="🧑\u200d🚀 Profil"), KeyboardButton(text="✨ Bot haqida")],
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 

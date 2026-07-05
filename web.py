@@ -1194,7 +1194,7 @@ async def profile_page(request):
 <div class="login-prompt">
   <h2 class="section" style="justify-content:center">&#10022; Profilga kirish</h2>
   <p class="empty" style="padding:10px 0 0">Profilingizni ko'rish uchun avval Telegram botimizni oching va
-  "👤 Profil" tugmasidan "🌐 Saytda profilni ochish" ni bosing -- sizga bir martalik kirish havolasi yuboriladi.</p>
+  "🧑‍🚀 Profil" tugmasidan "🌐 Saytda profilni ochish" ni bosing -- sizga bir martalik kirish havolasi yuboriladi.</p>
   <a class="cta-primary" href="https://t.me/{BOT_USERNAME}?start=veblogin">
     <span class="play">▶</span> Botni ochib kirish havolasini olish</a>
 </div>

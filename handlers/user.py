@@ -32,9 +32,9 @@ async def send_welcome_message(message: Message):
         "<b>STAR DUBBING</b> ga xush kelibsiz!\n\n"
         "Bu yerda sevimli anime va animelaringizning o'zbek tilidagi dublyaj qilingan "
         "epizodlarini topishingiz mumkin.\n\n"
-        "🔍 Qidirish orqali anime nomini yozing\n"
-        "📚 Barcha animelar bo'limidan ro'yxatni ko'ring\n"
-        "🎭 Janrlar bo'yicha tanlang"
+        "🔭 Qidirish orqali anime nomini yozing\n"
+        "🌌 Barcha animelar bo'limidan ro'yxatni ko'ring\n"
+        "🪐 Janrlar bo'yicha tanlang"
     )
     photo = _welcome_photo_file_id or FSInputFile(WELCOME_IMAGE_PATH)
     sent = await message.answer_photo(photo=photo, caption=caption, reply_markup=main_menu_kb())
@@ -143,7 +143,7 @@ async def cb_check_sub(call: CallbackQuery, bot: Bot):
 
 # ---------- QIDIRISH ----------
 
-@router.message(F.text == "🔍 Qidirish")
+@router.message(F.text == "🔭 Qidirish")
 async def ask_search(message: Message, bot: Bot):
     if not await check_subscription(bot, message.from_user.id):
         await send_subscribe_prompt(message)
@@ -151,7 +151,7 @@ async def ask_search(message: Message, bot: Bot):
     await message.answer("Anime nomini kiriting:")
 
 
-@router.message(F.text == "📚 Barcha animelar")
+@router.message(F.text == "🌌 Barcha animelar")
 async def show_all_anime(message: Message, bot: Bot):
     if not await check_subscription(bot, message.from_user.id):
         await send_subscribe_prompt(message)
@@ -162,7 +162,7 @@ async def show_all_anime(message: Message, bot: Bot):
         return
     rows = await db.list_anime(offset=0, limit=PAGE_SIZE)
     await message.answer(
-        f"📚 Barcha animelar ({total} ta):",
+        f"🌌 Barcha animelar ({total} ta):",
         reply_markup=anime_list_kb(rows, 0, total),
     )
 
@@ -174,7 +174,7 @@ async def paginate_anime(call: CallbackQuery):
     rows = await db.list_anime(offset=offset, limit=PAGE_SIZE)
     try:
         await call.message.edit_text(
-            f"📚 Barcha animelar ({total} ta):",
+            f"🌌 Barcha animelar ({total} ta):",
             reply_markup=anime_list_kb(rows, offset, total),
         )
     except TelegramBadRequest:
@@ -182,7 +182,7 @@ async def paginate_anime(call: CallbackQuery):
     await call.answer()
 
 
-@router.message(F.text == "🎭 Janrlar")
+@router.message(F.text == "🪐 Janrlar")
 async def show_genres(message: Message, bot: Bot):
     if not await check_subscription(bot, message.from_user.id):
         await send_subscribe_prompt(message)
@@ -191,7 +191,7 @@ async def show_genres(message: Message, bot: Bot):
     if not genres:
         await message.answer("Hozircha janrlar mavjud emas.")
         return
-    await message.answer("🎭 Janrni tanlang:", reply_markup=genres_kb(genres))
+    await message.answer("🪐 Janrni tanlang:", reply_markup=genres_kb(genres))
 
 
 @router.callback_query(F.data.startswith("genre_"))
@@ -225,18 +225,18 @@ async def paginate_genre_list(call: CallbackQuery):
     await call.answer()
 
 
-@router.message(F.text == "ℹ️ Bot haqida")
+@router.message(F.text == "✨ Bot haqida")
 async def about_bot(message: Message):
     await message.answer(
         "✦ <b>STAR DUBBING</b>\n\n"
         "Ushbu bot orqali anime va animelarning o'zbek tilidagi dublyajini "
         "bepul tomosha qilishingiz mumkin.\n\n"
         "📖 <b>Botdan foydalanish tartibi:</b>\n\n"
-        "1️⃣ 🔍 <b>Qidirish</b> — tugmani bosing, so'ng anime nomini yoki "
+        "1️⃣ 🔭 <b>Qidirish</b> — tugmani bosing, so'ng anime nomini yoki "
         "uning kodini (masalan: <code>3</code>) yozing.\n\n"
-        "2️⃣ 📚 <b>Barcha animelar</b> — mavjud barcha animelar ro'yxatini "
+        "2️⃣ 🌌 <b>Barcha animelar</b> — mavjud barcha animelar ro'yxatini "
         "ko'rasiz, har birining oldida <code>#kod</code> ko'rsatilgan.\n\n"
-        "3️⃣ 🎭 <b>Janrlar</b> — o'zingizga yoqqan janrni tanlab, shu janrdagi "
+        "3️⃣ 🪐 <b>Janrlar</b> — o'zingizga yoqqan janrni tanlab, shu janrdagi "
         "animelarni ko'rasiz.\n\n"
         "4️⃣ Anime ustiga bosgach, uning haqida ma'lumot (tavsif, janr, yil) "
         "va \"🎬 Epizodlar\" tugmasi chiqadi.\n\n"
@@ -276,7 +276,7 @@ async def vip_status(message: Message):
 
 # ---------- PROFIL ----------
 
-@router.message(F.text == "👤 Profil")
+@router.message(F.text == "🧑‍🚀 Profil")
 async def show_profile(message: Message):
     user = await db.get_user(message.from_user.id)
     settings = await db.get_user_settings(message.from_user.id)
@@ -288,7 +288,7 @@ async def show_profile(message: Message):
         vip_line = "♾ Umrbod" if not vip["expires_at"] else f"✅ {vip['expires_at'][:10]} gacha"
 
     text = (
-        f"👤 <b>Profil</b>\n\n"
+        f"🧑\u200d🚀 <b>Profil</b>\n\n"
         f"📛 Ism: <b>{display_name}</b>\n"
         f"🆔 Telegram ID: <code>{message.from_user.id}</code>\n"
         f"👤 Username: @{message.from_user.username or '—'}\n"
@@ -372,7 +372,7 @@ async def back_to_list(call: CallbackQuery):
     total = await db.count_anime()
     rows = await db.list_anime(offset=0, limit=PAGE_SIZE)
     await call.message.answer(
-        f"📚 Barcha animelar ({total} ta):",
+        f"🌌 Barcha animelar ({total} ta):",
         reply_markup=anime_list_kb(rows, 0, total),
     )
     await call.answer()
@@ -475,6 +475,6 @@ async def text_search(message: Message, bot: Bot):
 
     total = len(results)
     await message.answer(
-        f"🔍 \"{query}\" bo'yicha natijalar ({total} ta):",
+        f"🔭 \"{query}\" bo'yicha natijalar ({total} ta):",
         reply_markup=anime_list_kb(results[:PAGE_SIZE], 0, total),
     )
