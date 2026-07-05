@@ -24,9 +24,38 @@ from urllib.parse import quote
 from aiohttp import web
 
 import database as db
-from config import BOT_USERNAME, PAGE_SIZE
+from config import BOT_USERNAME, PAGE_SIZE, PUBLIC_CHANNEL_USERNAME
 
 ACCENT = "#9b8cff"
+
+SESSION_COOKIE = "sid"
+THEME_COOKIE = "theme"
+
+
+# ---------- SESSIYA / PROFIL YORDAMCHILARI ----------
+
+async def get_current_user(request):
+    """Cookie'dagi sessiya ID'si orqali joriy foydalanuvchini topadi.
+    Topilmasa None qaytaradi (mehmon holati)."""
+    session_id = request.cookies.get(SESSION_COOKIE)
+    if not session_id:
+        return None
+    user_id = await db.get_session_user_id(session_id)
+    if not user_id:
+        return None
+    user = await db.get_user(user_id)
+    if not user:
+        return None
+    settings = await db.get_user_settings(user_id)
+    vip = await db.get_vip(user_id)
+    return {"user_id": user_id, "user": user, "settings": settings, "vip": vip}
+
+
+def get_theme(request, current_user) -> str:
+    if current_user and current_user["settings"]["theme"]:
+        return current_user["settings"]["theme"]
+    theme = request.cookies.get(THEME_COOKIE)
+    return theme if theme in ("dark", "light") else "dark"
 
 
 # ---------- STIL (CSS) ----------
@@ -52,6 +81,33 @@ STYLES = """
     --vip: #ff5d7a;
     --ok: #5aa7ff;
   }
+  /* ---- kunduzgi (light) mavzu -- deyarli barcha ranglar CSS
+     o'zgaruvchilariga bog'langani uchun shu joyda qayta belgilash kifoya ---- */
+  html[data-theme="light"] {
+    --bg: #f3f2fb;
+    --bg-a: #ffffff;
+    --bg-b: #ece8fb;
+    --panel: #ffffff;
+    --panel-hi: #f1eefc;
+    --line: #e1ddf3;
+    --line-soft: #ebe8f8;
+    --ink: #191530;
+    --muted: #6b6785;
+    --violet: #6c5ce7;
+    --violet-deep: #5b48d0;
+    --blue: #2f7fe0;
+    --pink: #b25fe0;
+    --horizon: #e0812f;
+    --vip: #e0355a;
+    --ok: #2f7fe0;
+  }
+  html[data-theme="light"] body { background-attachment: fixed; }
+  html[data-theme="light"] .star-dot { background: #6c5ce7; }
+  html[data-theme="light"] .card .sub-strip {
+    background: linear-gradient(180deg, transparent, #ffffffea 45%);
+  }
+  html[data-theme="light"] .badge-vip { background: #ffffffd0; }
+  html[data-theme="light"] .live-results { background: #ffffff; }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   @media (prefers-reduced-motion: reduce) {
@@ -455,6 +511,69 @@ STYLES = """
   }
   .lock-notice a { color: var(--violet); font-weight: 700; text-decoration: underline; }
 
+  /* ---- theme toggle ---- */
+  .theme-toggle {
+    width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--panel); border: 1px solid var(--line); cursor: pointer;
+    font-size: 15px; transition: all .2s;
+  }
+  .theme-toggle:hover { border-color: var(--violet); background: var(--panel-hi); }
+
+  /* ---- video embed ---- */
+  .watch-wrap {
+    max-width: 720px; margin: 22px 0; border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--line); background: #000;
+  }
+  .watch-embed { width: 100%; min-height: 360px; }
+  .watch-nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 16px; max-width: 720px; }
+  .watch-title { font-size: 15px; font-weight: 700; margin: 18px 0 4px; }
+
+  /* ---- profil sahifasi ---- */
+  .profile-card {
+    max-width: 560px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 30px; margin-top: 10px;
+  }
+  .profile-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 13px 0; border-bottom: 1px solid var(--line-soft); gap: 12px;
+  }
+  .profile-row:last-child { border-bottom: none; }
+  .profile-row .lbl { color: var(--muted); font-size: 13px; }
+  .profile-row .val { font-weight: 600; font-size: 14px; text-align: right; }
+  .profile-row .val.vip-yes { color: var(--vip); }
+  .switch {
+    position: relative; width: 46px; height: 26px; flex-shrink: 0;
+  }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .slider {
+    position: absolute; inset: 0; background: var(--line); border-radius: 30px;
+    cursor: pointer; transition: background .2s;
+  }
+  .switch .slider::before {
+    content: ""; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: transform .2s;
+  }
+  .switch input:checked + .slider { background: var(--violet); }
+  .switch input:checked + .slider::before { transform: translateX(20px); }
+  .profile-name-form { display: flex; gap: 10px; margin-top: 8px; }
+  .profile-name-form input {
+    flex: 1; background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 13px; color: var(--ink); font-size: 13.5px;
+  }
+  .profile-name-form button, .btn-save {
+    background: linear-gradient(135deg, var(--violet-deep), var(--blue)); color: #fff;
+    border: none; border-radius: 6px; padding: 10px 18px; font-weight: 700;
+    font-size: 13px; cursor: pointer;
+  }
+  .profile-toast {
+    font-size: 12.5px; color: var(--ok); margin-top: 10px; height: 16px;
+  }
+  .login-prompt {
+    max-width: 480px; text-align: center; padding: 60px 20px;
+  }
+  .login-prompt .cta-primary { margin-top: 22px; }
+
   footer {
     text-align: center; color: var(--muted); font-size: 12.5px;
     padding: 44px 16px 32px; margin-top: 58px;
@@ -562,11 +681,31 @@ SCRIPTS = """
         if (input.value.trim().length >= 2 && box.innerHTML) box.classList.add('show');
       });
     }
+
+    // ---- theme toggle ----
+    var toggle = document.getElementById('theme-toggle');
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        var html = document.documentElement;
+        var next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        html.setAttribute('data-theme', next);
+        toggle.textContent = next === 'light' ? '\\u2600\\ufe0f' : '\\ud83c\\udf19';
+        document.cookie = 'theme=' + next + ';path=/;max-age=31536000';
+        if (document.body.getAttribute('data-logged-in') === '1') {
+          fetch('/api/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme: next })
+          }).catch(function () {});
+        }
+      });
+    }
   })();
 """
 
 
-def base_page(title: str, body: str, active: str = "", marquee_items=None) -> str:
+def base_page(title: str, body: str, active: str = "", marquee_items=None,
+               current_user=None, theme: str = "dark") -> str:
     if not marquee_items:
         marquee_items = [
             "YANGI QISMLAR MUNTAZAM YUKLANADI",
@@ -575,9 +714,17 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None) -> st
         ]
     track = " &nbsp;&#10022;&nbsp; ".join(html.escape(m) for m in marquee_items)
     marquee_html = f'<span>{track}</span> &nbsp;&#10022;&nbsp; <span>{track}</span>'
+    theme_icon = "☀️" if theme == "light" else "🌙"
+    logged_in = "1" if current_user else "0"
+
+    if current_user:
+        name = html.escape(current_user["settings"]["display_name"] or current_user["user"]["full_name"] or "Profil")
+        profile_link = f'<a href="/profil" class="{"active" if active == "profil" else ""}">👤 {name}</a>'
+    else:
+        profile_link = f'<a href="/profil" class="{"active" if active == "profil" else ""}">👤 Profil</a>'
 
     return f"""<!DOCTYPE html>
-<html lang="uz">
+<html lang="uz" data-theme="{theme}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -587,7 +734,7 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None) -> st
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>{STYLES}</style>
 </head>
-<body>
+<body data-logged-in="{logged_in}">
 <div id="starfield"></div>
 <header>
   <div class="rail">
@@ -600,6 +747,7 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None) -> st
       <a href="/" class="{'active' if active == 'home' else ''}">Bosh sahifa</a>
       <a href="/janrlar" class="{'active' if active == 'janrlar' else ''}">Janrlar</a>
       <a href="/tasodifiy" class="{'active' if active == 'tasodifiy' else ''}">Tasodifiy</a>
+      {profile_link}
       <a href="https://t.me/{BOT_USERNAME}" class="{'active' if active == 'bot' else ''}">Telegram bot</a>
     </nav>
     <div class="search-wrap">
@@ -609,6 +757,7 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None) -> st
       </form>
       <div id="live-results" class="live-results"></div>
     </div>
+    <button id="theme-toggle" class="theme-toggle" type="button" title="Mavzuni almashtirish">{theme_icon}</button>
   </div>
 </header>
 <main>
@@ -663,6 +812,8 @@ def pager_html(base_url: str, offset: int, total: int) -> str:
 # ---------- ROUTE HANDLERLARI ----------
 
 async def home(request):
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
     offset = int(request.query.get("offset", 0))
     total = await db.count_anime()
     rows = await db.list_anime(offset=offset, limit=PAGE_SIZE * 3)
@@ -706,20 +857,31 @@ async def home(request):
 <h2 class="section"><span class="ic">&#9642;</span> Barcha animelar <span class="count">{total}</span></h2>
 {grid}
 """
-    return web.Response(text=base_page("Bosh sahifa", body, active="home", marquee_items=marquee_items), content_type="text/html")
+    return web.Response(
+        text=base_page("Bosh sahifa", body, active="home", marquee_items=marquee_items,
+                        current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
 
 
 async def genres_page(request):
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
     genres = await db.get_all_genres()
     links = "".join(f'<a href="/janr/{quote(g)}">{html.escape(g)}</a>' for g in genres)
     body = f"""
 <h2 class="section"><span class="ic">&#10022;</span> Janrlar <span class="count">{len(genres)}</span></h2>
 <div class="genres">{links or "<p class='empty'>Janrlar topilmadi.</p>"}</div>
 """
-    return web.Response(text=base_page("Janrlar", body, active="janrlar"), content_type="text/html")
+    return web.Response(
+        text=base_page("Janrlar", body, active="janrlar", current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
 
 
 async def genre_detail(request):
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
     genre = request.match_info["name"]
     offset = int(request.query.get("offset", 0))
     total = await db.count_anime(genre=genre)
@@ -732,10 +894,14 @@ async def genre_detail(request):
         grid = '<p class="empty">Bu janrda animelar topilmadi.</p>'
 
     body = f'<h2 class="section"><span class="ic">&#10022;</span> {html.escape(genre)} <span class="count">{total}</span></h2>{grid}'
-    return web.Response(text=base_page(genre, body), content_type="text/html")
+    return web.Response(
+        text=base_page(genre, body, current_user=current_user, theme=theme), content_type="text/html"
+    )
 
 
 async def search_page(request):
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
     q = request.query.get("q", "").strip()
     if not q:
         return web.HTTPFound("/")
@@ -743,6 +909,10 @@ async def search_page(request):
     if q.isdigit():
         anime = await db.get_anime(int(q))
         rows = [anime] if anime else []
+        if not rows:
+            # Raqam anime ID'siga to'g'ri kelmasa ham, nom ichida shu raqam
+            # uchrasa (masalan "86" anomeси kabi) qidiruvni davom ettiramiz.
+            rows = await db.search_anime(q, limit=60)
     else:
         rows = await db.search_anime(q, limit=60)
 
@@ -752,7 +922,10 @@ async def search_page(request):
         grid = '<p class="empty">Hech narsa topilmadi. Nomning bir qismini yozib ko\'ring.</p>'
 
     body = f'<h2 class="section"><span class="ic">&gt;_</span> "{html.escape(q)}" bo\'yicha natijalar <span class="count">{len(rows)}</span></h2>{grid}'
-    return web.Response(text=base_page(f"Qidiruv: {q}", body), content_type="text/html")
+    return web.Response(
+        text=base_page(f"Qidiruv: {q}", body, current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
 
 
 async def api_search(request):
@@ -764,6 +937,8 @@ async def api_search(request):
     if q.isdigit():
         anime = await db.get_anime(int(q))
         rows = [anime] if anime else []
+        if not rows:
+            rows = await db.search_anime(q, limit=8)
     else:
         rows = await db.search_anime(q, limit=8)
 
@@ -794,6 +969,8 @@ async def random_anime(request):
 
 
 async def anime_detail(request):
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
     try:
         anime_id = int(request.match_info["id"])
     except ValueError:
@@ -803,6 +980,7 @@ async def anime_detail(request):
     if not anime:
         raise web.HTTPNotFound()
 
+    is_vip_visitor = bool(current_user and current_user["vip"])
     episodes = await db.get_episodes(anime_id)
     poster = f"/poster/{anime['id']}" if anime["poster_file_id"] else ""
     poster_tag = (
@@ -819,19 +997,28 @@ async def anime_detail(request):
     if anime["vip_only"]:
         tags += '<span class="tag" style="border-color:#ff5d7a;color:#ff5d7a">🔒 VIP-only</span>'
 
-    if anime["vip_only"]:
+    if anime["vip_only"] and not is_vip_visitor:
+        login_hint = (
+            '' if current_user else
+            '<br>Agar VIP bo\'lsangiz, <a href="/profil">saytga kiring</a> avval.'
+        )
         body_episodes = (
             '<div class="lock-notice">🔒 Bu anime faqat <b>VIP</b> foydalanuvchilar uchun. '
-            f'VIP status olish uchun <a href="https://t.me/{BOT_USERNAME}">botga</a> '
-            'yozing.</div>'
+            f'VIP status olish uchun <a href="https://t.me/{BOT_USERNAME}">botga</a> yozing.'
+            f'{login_hint}</div>'
         )
     elif episodes:
-        buttons = "".join(
-            f'<a class="ep-btn" href="https://t.me/{BOT_USERNAME}?start=ep_{anime_id}_{ep["episode_number"]}">'
-            f'<span class="play-ic">▶</span><span class="num">{ep["episode_number"]:02d}</span> {ep["episode_number"]}-qism</a>'
-            for ep in episodes
-        )
-        body_episodes = f'<div class="episodes">{buttons}</div>'
+        buttons = []
+        for ep in episodes:
+            if ep["public_msg_id"]:
+                href = f'/anime/{anime_id}/qism/{ep["episode_number"]}'
+            else:
+                href = f'https://t.me/{BOT_USERNAME}?start=ep_{anime_id}_{ep["episode_number"]}'
+            buttons.append(
+                f'<a class="ep-btn" href="{href}">'
+                f'<span class="play-ic">▶</span><span class="num">{ep["episode_number"]:02d}</span> {ep["episode_number"]}-qism</a>'
+            )
+        body_episodes = f'<div class="episodes">{"".join(buttons)}</div>'
     else:
         body_episodes = '<p class="empty" style="text-align:left">Hali epizod qo\'shilmagan.</p>'
 
@@ -847,7 +1034,80 @@ async def anime_detail(request):
   </div>
 </div>
 """
-    return web.Response(text=base_page(anime["title"], body), content_type="text/html")
+    return web.Response(
+        text=base_page(anime["title"], body, current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
+
+
+async def episode_watch(request):
+    """Epizodni saytning o'zida (Telegramga chiqmasdan) ko'rsatadi -- OCHIQ
+    kanaldagi mos post Telegram widget orqali sahifaga o'rnatiladi."""
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
+    try:
+        anime_id = int(request.match_info["id"])
+        ep_num = int(request.match_info["num"])
+    except ValueError:
+        raise web.HTTPNotFound()
+
+    anime = await db.get_anime(anime_id)
+    if not anime:
+        raise web.HTTPNotFound()
+
+    is_vip_visitor = bool(current_user and current_user["vip"])
+    if anime["vip_only"] and not is_vip_visitor:
+        body = (
+            '<div class="lock-notice" style="max-width:560px">🔒 Bu anime faqat <b>VIP</b> '
+            f'foydalanuvchilar uchun. VIP olish uchun <a href="https://t.me/{BOT_USERNAME}">botga</a> yozing, '
+            'so\'ng <a href="/profil">saytga qayta kiring</a>.</div>'
+        )
+        return web.Response(
+            text=base_page(anime["title"], body, current_user=current_user, theme=theme),
+            content_type="text/html",
+        )
+
+    episode = await db.get_episode_by_number(anime_id, ep_num)
+    if not episode:
+        raise web.HTTPNotFound()
+
+    if not episode["public_msg_id"]:
+        body = (
+            '<div class="lock-notice" style="max-width:560px">ℹ️ Bu qism hali saytga bog\'lanmagan. '
+            f'Hozircha <a href="https://t.me/{BOT_USERNAME}?start=ep_{anime_id}_{ep_num}">Telegram bot orqali</a> '
+            'tomosha qiling.</div>'
+        )
+        return web.Response(
+            text=base_page(anime["title"], body, current_user=current_user, theme=theme),
+            content_type="text/html",
+        )
+
+    has_prev = await db.get_episode_by_number(anime_id, ep_num - 1) is not None
+    has_next = await db.get_episode_by_number(anime_id, ep_num + 1) is not None
+    nav = []
+    if has_prev:
+        nav.append(f'<a class="cta-secondary" href="/anime/{anime_id}/qism/{ep_num - 1}">⬅️ Oldingi</a>')
+    else:
+        nav.append("<span></span>")
+    nav.append(f'<a class="cta-secondary" href="/anime/{anime_id}">📋 Epizodlar</a>')
+    if has_next:
+        nav.append(f'<a class="cta-secondary" href="/anime/{anime_id}/qism/{ep_num + 1}">Keyingi ➡️</a>')
+    else:
+        nav.append("<span></span>")
+
+    body = f"""
+<h1 class="watch-title">{html.escape(anime['title'])} — {ep_num}-qism</h1>
+<div class="watch-wrap">
+  <script async src="https://telegram.org/js/telegram-widget.js?22"
+    data-telegram-post="{PUBLIC_CHANNEL_USERNAME}/{episode['public_msg_id']}"
+    data-width="100%"></script>
+</div>
+<div class="watch-nav">{''.join(nav)}</div>
+"""
+    return web.Response(
+        text=base_page(f"{anime['title']} — {ep_num}-qism", body, current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
 
 
 async def poster_proxy(request):
@@ -870,6 +1130,184 @@ async def poster_proxy(request):
         raise web.HTTPNotFound()
 
 
+async def login_via_token(request):
+    """Bot yuborgan bir martalik havola orqali kirish -- tokenni tekshirib,
+    sessiya cookie'sini o'rnatadi va profilga yo'naltiradi."""
+    token = request.query.get("token", "")
+    user_id = await db.consume_login_token(token) if token else None
+    if not user_id:
+        body = (
+            '<div class="login-prompt"><h2 class="section" style="justify-content:center">'
+            '&#9888; Havola yaroqsiz</h2>'
+            '<p class="empty" style="padding:10px 0 0">Havola muddati o\'tgan yoki allaqachon ishlatilgan. '
+            'Botdan qaytadan yangi havola oling.</p>'
+            f'<a class="cta-primary" href="https://t.me/{BOT_USERNAME}?start=veblogin">'
+            '<span class="play">▶</span> Botni ochish</a></div>'
+        )
+        return web.Response(text=base_page("Kirish", body), content_type="text/html")
+
+    session_id = await db.create_session(user_id)
+    resp = web.HTTPFound("/profil")
+    resp.set_cookie(SESSION_COOKIE, session_id, max_age=60 * 60 * 24 * 30, httponly=True, samesite="Lax")
+    return resp
+
+
+async def logout(request):
+    session_id = request.cookies.get(SESSION_COOKIE)
+    if session_id:
+        await db.delete_session(session_id)
+    resp = web.HTTPFound("/profil")
+    resp.del_cookie(SESSION_COOKIE)
+    return resp
+
+
+async def profile_page(request):
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
+
+    if not current_user:
+        body = f"""
+<div class="login-prompt">
+  <h2 class="section" style="justify-content:center">&#10022; Profilga kirish</h2>
+  <p class="empty" style="padding:10px 0 0">Profilingizni ko'rish uchun avval Telegram botimizni oching va
+  "👤 Profil" tugmasidan "🌐 Saytda profilni ochish" ni bosing -- sizga bir martalik kirish havolasi yuboriladi.</p>
+  <a class="cta-primary" href="https://t.me/{BOT_USERNAME}?start=veblogin">
+    <span class="play">▶</span> Botni ochib kirish havolasini olish</a>
+</div>
+"""
+        return web.Response(
+            text=base_page("Profil", body, active="profil", current_user=None, theme=theme),
+            content_type="text/html",
+        )
+
+    user = current_user["user"]
+    settings = current_user["settings"]
+    vip = current_user["vip"]
+    display_name = html.escape(settings["display_name"] or user["full_name"] or "")
+    vip_html = '<span class="val vip-yes">❌ Yo\'q</span>'
+    if vip:
+        muddat = "♾ Umrbod" if not vip["expires_at"] else f"✅ {vip['expires_at'][:10]} gacha"
+        vip_html = f'<span class="val vip-yes">{muddat}</span>'
+
+    body = f"""
+<h2 class="section"><span class="ic">&#10022;</span> Profil</h2>
+<div class="profile-card">
+  <div class="profile-row">
+    <span class="lbl">Telegram ID</span>
+    <span class="val mono">{user['user_id']}</span>
+  </div>
+  <div class="profile-row">
+    <span class="lbl">Username</span>
+    <span class="val">@{html.escape(user['username'] or '—')}</span>
+  </div>
+  <div class="profile-row">
+    <span class="lbl">👑 VIP holati</span>
+    {vip_html}
+  </div>
+  <div class="profile-row">
+    <span class="lbl">A'zo bo'lgan sana</span>
+    <span class="val">{(user['joined_at'] or '')[:10]}</span>
+  </div>
+</div>
+
+<h2 class="section"><span class="ic">&#9881;</span> Sozlamalar</h2>
+<div class="profile-card">
+  <div class="profile-row">
+    <span class="lbl">🌙 Tungi rejim</span>
+    <label class="switch">
+      <input type="checkbox" id="theme-switch" {"checked" if settings["theme"] == "dark" else ""}>
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div class="profile-row">
+    <span class="lbl">🔔 Bildirishnomalar</span>
+    <label class="switch">
+      <input type="checkbox" id="notif-switch" {"checked" if settings["notifications_enabled"] else ""}>
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div class="profile-row" style="flex-direction:column;align-items:stretch">
+    <span class="lbl">✏️ Ko'rsatiladigan ism</span>
+    <div class="profile-name-form">
+      <input type="text" id="display-name-input" value="{display_name}" maxlength="64" placeholder="Ismingiz">
+      <button id="save-name-btn" class="btn-save" type="button">Saqlash</button>
+    </div>
+    <div class="profile-toast" id="profile-toast"></div>
+  </div>
+</div>
+
+<p style="margin-top:26px"><a href="/chiqish" class="cta-secondary">🚪 Chiqish</a></p>
+
+<script>
+(function () {{
+  function toast(msg) {{
+    var t = document.getElementById('profile-toast');
+    if (t) {{ t.textContent = msg; setTimeout(function () {{ t.textContent = ''; }}, 2200); }}
+  }}
+  function save(payload) {{
+    fetch('/api/profile', {{
+      method: 'POST', headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify(payload)
+    }}).then(function (r) {{ if (r.ok) toast('✅ Saqlandi'); else toast('❌ Xatolik'); }})
+      .catch(function () {{ toast('❌ Xatolik'); }});
+  }}
+  var themeSwitch = document.getElementById('theme-switch');
+  if (themeSwitch) {{
+    themeSwitch.addEventListener('change', function () {{
+      var next = themeSwitch.checked ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next);
+      document.cookie = 'theme=' + next + ';path=/;max-age=31536000';
+      save({{ theme: next }});
+    }});
+  }}
+  var notifSwitch = document.getElementById('notif-switch');
+  if (notifSwitch) {{
+    notifSwitch.addEventListener('change', function () {{
+      save({{ notifications_enabled: notifSwitch.checked }});
+    }});
+  }}
+  var saveBtn = document.getElementById('save-name-btn');
+  if (saveBtn) {{
+    saveBtn.addEventListener('click', function () {{
+      var val = document.getElementById('display-name-input').value.trim();
+      save({{ display_name: val }});
+    }});
+  }}
+}})();
+</script>
+"""
+    return web.Response(
+        text=base_page("Profil", body, active="profil", current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
+
+
+async def api_profile_update(request):
+    current_user = await get_current_user(request)
+    if not current_user:
+        return web.json_response({"error": "kirish talab qilinadi"}, status=401)
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "noto'g'ri so'rov"}, status=400)
+
+    theme = data.get("theme")
+    if theme not in (None, "dark", "light"):
+        return web.json_response({"error": "noto'g'ri mavzu"}, status=400)
+    notifications_enabled = data.get("notifications_enabled")
+    display_name = data.get("display_name")
+    if isinstance(display_name, str):
+        display_name = display_name.strip()[:64] or None
+
+    await db.update_user_settings(
+        current_user["user_id"],
+        display_name=display_name if "display_name" in data else None,
+        theme=theme,
+        notifications_enabled=notifications_enabled if isinstance(notifications_enabled, bool) else None,
+    )
+    return web.json_response({"ok": True})
+
+
 async def ping(request):
     return web.Response(text="STAR DUBBING bot va sayt ishlayapti ✅")
 
@@ -885,5 +1323,10 @@ def create_app(bot) -> web.Application:
     app.router.add_get("/api/search", api_search)
     app.router.add_get("/tasodifiy", random_anime)
     app.router.add_get("/anime/{id}", anime_detail)
+    app.router.add_get("/anime/{id}/qism/{num}", episode_watch)
     app.router.add_get("/poster/{id}", poster_proxy)
+    app.router.add_get("/kirish", login_via_token)
+    app.router.add_get("/chiqish", logout)
+    app.router.add_get("/profil", profile_page)
+    app.router.add_post("/api/profile", api_profile_update)
     return app

@@ -66,6 +66,54 @@ Har bir video Telegram serverida saqlanadi, biz faqat uning `file_id` sini bazag
 Shu sababli serverda joy tejaladi va video yuborish tezkor bo'ladi — bu aynan AniSinusBot
 kabi botlarda ishlatiladigan usul.
 
+## 6.1. Videoni saytda (Telegramga chiqmasdan) tomosha qilish
+
+Sayt videoni to'g'ridan-to'g'ri Telegram serveridan ola olmaydi (bot API katta
+fayllarni yuklab olishga imkon bermaydi), shu sababli quyidagi usul qo'llanildi:
+
+1. `.env` faylida `PUBLIC_CHANNEL_USERNAME` — videolar joylanadigan **ochiq**
+   (public, @username bor) Telegram kanal nomi ko'rsatiladi.
+2. Epizod qo'shishda (`🎬 Epizod qo'shish`) video yuborilgach, bot sizdan shu
+   videoning ochiq kanaldagi post havolasini so'raydi
+   (masalan: `https://t.me/PUBLIC_CHANNEL_USERNAME/123`).
+   - Avval videoni ochiq kanalga joylang, keyin uning havolasini botga yuboring.
+   - Agar hozircha ochiq kanalga joylay olmasangiz, `/skip` yozing — epizod
+     baribir qo'shiladi, lekin saytda faqat "Telegram bot orqali tomosha
+     qilish" tugmasi ko'rinadi (eski usul bo'yicha).
+3. Havola to'g'ri bo'lsa, sayt shu postni Telegramning rasmiy
+   `telegram-widget.js` orqali sahifaning o'ziga o'rnatadi — foydalanuvchi
+   hech qayerga chiqmasdan videoni ko'radi.
+4. VIP-only animelar uchun saytda tomosha qilish faqat **saytga kirgan va VIP
+   statusi bor** foydalanuvchilarga ochiq (pastdagi "Veb-profil" bo'limiga
+   qarang). Ochiq (VIP bo'lmagan) animelarni istalgan mehmon ko'ra oladi.
+
+## 6.2. Veb-profil (saytga "kirish")
+
+To'liq login/parol tizimi emas, balki bot orqali beriladigan **bir martalik
+havola** (magic link) ishlatiladi:
+
+1. Foydalanuvchi botda "👤 Profil" → "🌐 Saytda profilni ochish" ni bosadi
+   (yoki saytdagi "👤 Profil" bo'limidan botni ochadi).
+2. Bot 10 daqiqa amal qiladigan, bir marta ishlatiladigan havola yuboradi
+   (`SITE_URL/kirish?token=...`).
+3. Havolani bosgach, brauzerda 30 kunlik sessiya cookie o'rnatiladi va
+   foydalanuvchi `/profil` sahifasida quyidagilarni ko'radi/boshqaradi:
+   - Telegram ID, username, qo'shilgan sana
+   - VIP holati (muddati)
+   - 🌙 Tungi/☀️ kunduzgi rejim (butun saytda, header'dagi tugma orqali ham)
+   - 🔔 Bildirishnomalar yoqish/o'chirish (o'chirilsa, admin "📢 Xabar
+     yuborish" broadcast'ida bu foydalanuvchiga xabar bormaydi)
+   - ✏️ Ko'rsatiladigan ismni o'zgartirish (botda ham, saytda ham bir xil
+     ko'rinadi)
+
+## 6.3. Qidiruv
+
+Qidiruv endi anime nomining **istalgan qismi** bo'yicha ishlaydi (boshida,
+o'rtasida yoki oxirida joylashgan bo'lsa ham), katta/kichik harf va apostrof
+turi (`'`/`’`/`‘`) farq qilmaydi. Agar faqat raqam kiritilsa, avval anime
+kodi (ID) sifatida qaraladi; topilmasa, xuddi shu raqam nomlar ichida ham
+qidiriladi.
+
 ## 7. Serverga qo'yish (production)
 
 - Oddiy VPS (Ubuntu) da `systemd` service yoki `tmux`/`screen` orqali `python bot.py` ni doim

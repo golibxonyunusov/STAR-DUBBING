@@ -1,10 +1,12 @@
+import re
+
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
 import database as db
-from config import ADMIN_IDS
+from config import ADMIN_IDS, PUBLIC_CHANNEL_USERNAME
 from states import AddAnime, AddEpisode, DeleteAnime, Broadcast, AddChannel, GrantVip, RemoveVip
 from keyboards import (
     admin_menu_kb,
@@ -147,18 +149,59 @@ async def add_episode_video(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    await db.add_episode(data["anime_id"], data["episode_number"], file_id)
-    anime = await db.get_anime(data["anime_id"])
-    await state.clear()
+    episode_id = await db.add_episode(data["anime_id"], data["episode_number"], file_id)
+    await state.update_data(episode_id=episode_id)
+    await state.set_state(AddEpisode.public_post)
     await message.answer(
-        f"✅ \"{anime['title']}\" — {data['episode_number']}-qism qo'shildi!",
-        reply_markup=admin_menu_kb(),
+        f"✅ Video saqlandi.\n\n"
+        f"📡 Endi shu epizodni OCHIQ kanaldagi (@{PUBLIC_CHANNEL_USERNAME}) postiga bog'lab qo'yamiz -- "
+        f"shunda u saytda Telegramga chiqmasdan tomosha qilinadi.\n\n"
+        f"Avval videoni @{PUBLIC_CHANNEL_USERNAME} kanaliga joylang, so'ng shu postning havolasini "
+        f"(masalan: <code>https://t.me/{PUBLIC_CHANNEL_USERNAME}/123</code>) yuboring.\n\n"
+        f"Agar hozircha bu qadamni o'tkazib yubormoqchi bo'lsangiz, /skip yozing "
+        f"(keyinroq admin paneldan qo'shib qo'yish mumkin bo'ladi)."
     )
 
 
 @router.message(AddEpisode.video)
 async def add_episode_video_invalid(message: Message):
     await message.answer("Iltimos, video fayl yuboring.")
+
+
+@router.message(AddEpisode.public_post, Command("skip"))
+async def add_episode_public_post_skip(message: Message, state: FSMContext):
+    data = await state.get_data()
+    anime = await db.get_anime(data["anime_id"])
+    await state.clear()
+    await message.answer(
+        f"✅ \"{anime['title']}\" — {data['episode_number']}-qism qo'shildi!\n"
+        f"ℹ️ Sayt uchun ochiq kanal posti hali bog'lanmadi -- bu epizod saytda faqat "
+        f"Telegram orqali (bot deep-link) ko'rinadi.",
+        reply_markup=admin_menu_kb(),
+    )
+
+
+@router.message(AddEpisode.public_post)
+async def add_episode_public_post(message: Message, state: FSMContext):
+    data = await state.get_data()
+    text = (message.text or "").strip()
+    match = re.search(r"t\.me/([A-Za-z0-9_]+)/(\d+)", text)
+    if not match or match.group(1).lower() != PUBLIC_CHANNEL_USERNAME.lower():
+        await message.answer(
+            f"⚠️ Havola noto'g'ri. @{PUBLIC_CHANNEL_USERNAME} kanalidagi post havolasini yuboring "
+            f"(masalan: <code>https://t.me/{PUBLIC_CHANNEL_USERNAME}/123</code>) yoki /skip yozing."
+        )
+        return
+
+    public_msg_id = int(match.group(2))
+    await db.set_episode_public_msg(data["episode_id"], public_msg_id)
+    anime = await db.get_anime(data["anime_id"])
+    await state.clear()
+    await message.answer(
+        f"✅ \"{anime['title']}\" — {data['episode_number']}-qism qo'shildi va saytga bog'landi!\n"
+        f"🌐 Endi bu epizod saytda to'g'ridan-to'g'ri tomosha qilinadi.",
+        reply_markup=admin_menu_kb(),
+    )
 
 
 # ==================== ANIME O'CHIRISH ====================
@@ -239,9 +282,9 @@ async def broadcast_preview(message: Message, state: FSMContext):
 @router.callback_query(F.data == "confirm_broadcast")
 async def broadcast_send(call: CallbackQuery, state: FSMContext, bot: Bot):
     data = await state.get_data()
-    user_ids = await db.get_all_user_ids()
+    user_ids = await db.get_notifiable_user_ids()
     await state.clear()
-    await call.message.answer(f"⏳ {len(user_ids)} ta foydalanuvchiga yuborilmoqda...")
+    await call.message.answer(f"⏳ {len(user_ids)} ta foydalanuvchiga yuborilmoqda (bildirishnomani o'chirganlar hisobga kirmaydi)...")
 
     sent, failed = 0, 0
     for uid in user_ids:

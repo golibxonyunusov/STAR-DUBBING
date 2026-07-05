@@ -1,10 +1,12 @@
 from aiogram import Router, F, Bot
 from aiogram.filters import CommandStart, CommandObject
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 
 import database as db
-from config import PAGE_SIZE, REQUIRED_CHANNELS
+from config import PAGE_SIZE, REQUIRED_CHANNELS, SITE_URL
+from states import EditProfile
 from keyboards import (
     main_menu_kb,
     subscribe_kb,
@@ -13,6 +15,8 @@ from keyboards import (
     anime_card_kb,
     episodes_list_kb,
     episode_nav_kb,
+    profile_kb,
+    web_login_kb,
 )
 
 router = Router()
@@ -55,6 +59,18 @@ async def send_subscribe_prompt(message: Message):
     )
 
 
+# ---------- VEB-PROFILGA KIRISH (magic-link) ----------
+
+async def send_web_login_link(message: Message, user_id: int):
+    token = await db.create_login_token(user_id)
+    url = f"{SITE_URL}/kirish?token={token}"
+    await message.answer(
+        "🌐 Saytdagi profilingizga kirish uchun quyidagi tugmani bosing.\n"
+        "⏳ Havola 10 daqiqa amal qiladi va faqat bir marta ishlatiladi.",
+        reply_markup=web_login_kb(url),
+    )
+
+
 # ---------- START ----------
 
 @router.message(CommandStart())
@@ -65,9 +81,15 @@ async def cmd_start(message: Message, bot: Bot, command: CommandObject):
         await send_subscribe_prompt(message)
         return
 
-    payload = command.args  # sayt orqali kelgan bo'lsa: "ep_3_1" yoki "anime_3"
+    payload = command.args  # sayt orqali kelgan bo'lsa: "ep_3_1", "anime_3" yoki "veblogin"
 
     if payload:
+        if payload == "veblogin":
+            # Sayt "Kirish" tugmasi orqali bot ochilgan -- darhol veb-profilga
+            # kirish havolasini yuboramiz.
+            await send_web_login_link(message, message.from_user.id)
+            await message.answer("Asosiy menyu:", reply_markup=main_menu_kb())
+            return
         if payload.startswith("ep_"):
             try:
                 _, anime_id_str, ep_num_str = payload.split("_")
@@ -238,6 +260,52 @@ async def vip_status(message: Message):
             "✅ Yopiq (VIP-only) animelarni ko'rish imkoniga ega bo'lasiz\n\n"
             "VIP olish uchun @rudeus1111 bilan bog'laning."
         )
+
+
+# ---------- PROFIL ----------
+
+@router.message(F.text == "👤 Profil")
+async def show_profile(message: Message):
+    user = await db.get_user(message.from_user.id)
+    settings = await db.get_user_settings(message.from_user.id)
+    vip = await db.get_vip(message.from_user.id)
+
+    display_name = settings["display_name"] or (user["full_name"] if user else message.from_user.full_name)
+    vip_line = "❌ Yo'q"
+    if vip:
+        vip_line = "♾ Umrbod" if not vip["expires_at"] else f"✅ {vip['expires_at'][:10]} gacha"
+
+    text = (
+        f"👤 <b>Profil</b>\n\n"
+        f"📛 Ism: <b>{display_name}</b>\n"
+        f"🆔 Telegram ID: <code>{message.from_user.id}</code>\n"
+        f"👤 Username: @{message.from_user.username or '—'}\n"
+        f"👑 VIP: {vip_line}\n\n"
+        f"🌐 Profilingizni saytda ham ochib, mavzu va bildirishnoma "
+        f"sozlamalarini boshqarishingiz mumkin."
+    )
+    await message.answer(text, reply_markup=profile_kb())
+
+
+@router.callback_query(F.data == "profile_edit_name")
+async def profile_edit_name_start(call: CallbackQuery, state: FSMContext):
+    await state.set_state(EditProfile.display_name)
+    await call.message.answer("✏️ Yangi ismingizni (saytda va botda ko'rinadigan) kiriting:")
+    await call.answer()
+
+
+@router.message(EditProfile.display_name)
+async def profile_edit_name_save(message: Message, state: FSMContext):
+    name = message.text.strip()[:64]
+    await db.update_user_settings(message.from_user.id, display_name=name)
+    await state.clear()
+    await message.answer(f"✅ Ismingiz \"{name}\" qilib saqlandi.", reply_markup=main_menu_kb())
+
+
+@router.callback_query(F.data == "profile_web_login")
+async def profile_web_login(call: CallbackQuery):
+    await send_web_login_link(call.message, call.from_user.id)
+    await call.answer()
 
 
 # ---------- ANIME KARTASI ----------

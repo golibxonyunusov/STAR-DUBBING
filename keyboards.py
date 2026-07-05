@@ -12,7 +12,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
     kb = [
         [KeyboardButton(text="🔍 Qidirish"), KeyboardButton(text="📚 Barcha animelar")],
         [KeyboardButton(text="🎭 Janrlar"), KeyboardButton(text="👑 VIP")],
-        [KeyboardButton(text="ℹ️ Bot haqida")],
+        [KeyboardButton(text="👤 Profil"), KeyboardButton(text="ℹ️ Bot haqida")],
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
@@ -112,6 +112,20 @@ def episode_nav_kb(anime_id, episode_number, has_prev, has_next):
     rows = [row] if row else []
     rows.append([InlineKeyboardButton(text="📋 Epizodlar ro'yxati", callback_data=f"episodes_{anime_id}_0")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ---------- PROFIL ----------
+
+def profile_kb() -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="✏️ Ismni o'zgartirish", callback_data="profile_edit_name")],
+        [InlineKeyboardButton(text="🌐 Saytda profilni ochish", callback_data="profile_web_login")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def web_login_kb(url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🌐 Profilga kirish", url=url)]])
 
 
 # ---------- ADMIN: anime tanlash (epizod qo'shish uchun) ----------

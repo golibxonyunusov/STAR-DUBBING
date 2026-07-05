@@ -25,6 +25,16 @@ PAGE_SIZE = 8  # bitta sahifada nechta anime/epizod ko'rsatish
 # Agar @ bilan yozilgan bo'lsa ham, quyida avtomatik olib tashlanadi.
 BOT_USERNAME = os.getenv("BOT_USERNAME", "").lstrip("@").strip()
 
+# Saytning to'liq domeni (https:// bilan, oxirida "/" siz).
+# Bot shu domen asosida "veb-profilga kirish" havolalarini tuzadi.
+SITE_URL = os.getenv("SITE_URL", "https://star-dubbing.onrender.com").rstrip("/")
+
+# Video postlar joylangan OCHIQ (public, @username bor) Telegram kanal.
+# Shu kanaldagi postni saytda "iframe/widget" orqali ko'rsatish uchun ishlatiladi
+# (Telegram bu kanalning postini boshqa saytga o'rnatishga ruxsat beradi, chunki u ochiq).
+# @ belgisisiz kiritiladi, masalan: PUBLIC_CHANNEL_USERNAME=sjoshsbshdjdhdjv
+PUBLIC_CHANNEL_USERNAME = os.getenv("PUBLIC_CHANNEL_USERNAME", "sjoshsbshdjdhdjv").lstrip("@").strip()
+
 # Majburiy obuna kanallari — to'g'ridan-to'g'ri shu yerda (kodda) belgilanadi.
 # chat_id: kanal username (@ bilan) yoki -100... ko'rinishidagi ID.
 # Bot bu kanallarda ADMIN bo'lishi shart, aks holda obunani tekshira olmaydi.

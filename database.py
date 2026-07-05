@@ -1,5 +1,6 @@
 import aiosqlite
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta
 from config import DB_PATH
 
 CREATE_TABLES_SQL = """
@@ -42,6 +43,28 @@ CREATE TABLE IF NOT EXISTS vip_users (
     granted_at TEXT,
     expires_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS user_settings (
+    user_id INTEGER PRIMARY KEY,
+    display_name TEXT,
+    theme TEXT DEFAULT 'dark',
+    notifications_enabled INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS login_tokens (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    created_at TEXT,
+    expires_at TEXT,
+    used INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    session_id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    created_at TEXT,
+    expires_at TEXT
+);
 """
 
 
@@ -52,6 +75,13 @@ async def init_db():
         # xavfsiz migratsiya (xato chiqsa e'tibor bermaymiz, demak ustun allaqachon bor).
         try:
             await db.execute("ALTER TABLE anime ADD COLUMN vip_only INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        # Eski bazalarda "episodes" jadvalida public_msg_id ustuni bo'lmasligi mumkin --
+        # bu ustun videoni OCHIQ kanaldagi mos postining xabar ID'sini saqlaydi
+        # (saytda "Telegramga chiqmasdan" tomosha qilish uchun kerak).
+        try:
+            await db.execute("ALTER TABLE episodes ADD COLUMN public_msg_id INTEGER")
         except Exception:
             pass
         await db.commit()
@@ -82,6 +112,29 @@ async def get_all_user_ids() -> list[int]:
         return [r[0] for r in rows]
 
 
+async def get_notifiable_user_ids() -> list[int]:
+    """Bildirishnomani o'chirmagan foydalanuvchilar ro'yxati (broadcast uchun).
+    user_settings jadvalida yozuvi bo'lmagan foydalanuvchilar ham kiradi --
+    ular hali sozlamani o'zgartirmagan, demak standart holat: yoqilgan."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """
+            SELECT u.user_id FROM users u
+            LEFT JOIN user_settings s ON u.user_id = s.user_id
+            WHERE s.notifications_enabled IS NULL OR s.notifications_enabled = 1
+            """
+        )
+        rows = await cur.fetchall()
+        return [r[0] for r in rows]
+
+
+async def get_user(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+        return await cur.fetchone()
+
+
 # ---------- ANIME ----------
 
 async def add_anime(title, description, poster_file_id, genre, year, vip_only: bool = False) -> int:
@@ -109,12 +162,41 @@ async def delete_anime(anime_id: int):
         await db.commit()
 
 
+def _normalize_search_text(text: str) -> str:
+    """Qidiruvni ishonchli qilish uchun: kichik harfga o'tkazish, turli xil
+    apostrof belgilarini ("'" ’ ‘ `) bittasiga tenglashtirish va LIKE'ning
+    maxsus belgilarini (% _) ekranlash, aks holda foydalanuvchi ularni
+    yozsa qidiruv kutilmagan natija berishi mumkin."""
+    text = text.strip().lower()
+    for ch in ("’", "‘", "`", "´"):
+        text = text.replace(ch, "'")
+    # LIKE uchun maxsus belgilarni ekranlaymiz (escape belgisi: \)
+    text = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return text
+
+
 async def search_anime(query: str, limit: int = 20):
+    """Anime nomi bo'yicha qidiradi -- nomning istalgan qismi (boshida,
+    o'rtasida yoki oxirida) mos kelsa ham anime topiladi. Katta/kichik harf
+    va apostrof turi (' ’ ‘) farq qilmaydi."""
+    normalized = _normalize_search_text(query)
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute(
-            "SELECT * FROM anime WHERE title LIKE ? ORDER BY id DESC LIMIT ?",
-            (f"%{query}%", limit),
+            """
+            SELECT * FROM (
+                SELECT *,
+                    REPLACE(REPLACE(REPLACE(LOWER(title), '’', ''''), '‘', ''''), '`', '''')
+                        AS _norm_title
+                FROM anime
+            )
+            WHERE _norm_title LIKE ? ESCAPE '\\'
+            ORDER BY
+                CASE WHEN _norm_title LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END,
+                id DESC
+            LIMIT ?
+            """,
+            (f"%{normalized}%", f"{normalized}%", limit),
         )
         return await cur.fetchall()
 
@@ -204,6 +286,16 @@ async def delete_episode(episode_id: int):
         await db.commit()
 
 
+async def set_episode_public_msg(episode_id: int, public_msg_id: int | None):
+    """Epizodni OCHIQ kanaldagi mos postining xabar ID'siga bog'laydi --
+    shu orqali sayt videoni Telegramga chiqmasdan (widget/iframe) ko'rsata oladi."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE episodes SET public_msg_id = ? WHERE id = ?", (public_msg_id, episode_id)
+        )
+        await db.commit()
+
+
 # ---------- REQUIRED CHANNELS (majburiy obuna) ----------
 
 async def add_required_channel(chat_id: str, title: str, invite_link: str = ""):
@@ -284,4 +376,113 @@ async def set_anime_vip(anime_id: int, vip_only: bool):
         await db.execute(
             "UPDATE anime SET vip_only = ? WHERE id = ?", (int(vip_only), anime_id)
         )
+        await db.commit()
+
+
+# ---------- FOYDALANUVCHI SOZLAMALARI / PROFIL ----------
+
+async def get_user_settings(user_id: int):
+    """Foydalanuvchi sozlamalarini qaytaradi, agar hali mavjud bo'lmasa
+    standart qiymatlar bilan yaratadi (theme=dark, notifications=yoqilgan)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,))
+        row = await cur.fetchone()
+        if row:
+            return row
+        await db.execute(
+            "INSERT INTO user_settings (user_id, theme, notifications_enabled) VALUES (?, 'dark', 1)",
+            (user_id,),
+        )
+        await db.commit()
+        cur = await db.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,))
+        return await cur.fetchone()
+
+
+async def update_user_settings(user_id: int, display_name: str = None, theme: str = None,
+                                notifications_enabled: bool = None):
+    """Faqat berilgan (None bo'lmagan) maydonlarni yangilaydi."""
+    await get_user_settings(user_id)  # qatorni mavjud qilib qo'yish uchun
+    fields, values = [], []
+    if display_name is not None:
+        fields.append("display_name = ?")
+        values.append(display_name)
+    if theme is not None:
+        fields.append("theme = ?")
+        values.append(theme)
+    if notifications_enabled is not None:
+        fields.append("notifications_enabled = ?")
+        values.append(int(notifications_enabled))
+    if not fields:
+        return
+    values.append(user_id)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(f"UPDATE user_settings SET {', '.join(fields)} WHERE user_id = ?", values)
+        await db.commit()
+
+
+# ---------- VEB-PROFILGA KIRISH (magic-link login) ----------
+
+async def create_login_token(user_id: int, ttl_minutes: int = 10) -> str:
+    """Bot orqali yuboriladigan bir martalik kirish tokenini yaratadi."""
+    token = secrets.token_urlsafe(24)
+    now = datetime.utcnow()
+    expires_at = (now + timedelta(minutes=ttl_minutes)).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO login_tokens (token, user_id, created_at, expires_at, used) VALUES (?, ?, ?, ?, 0)",
+            (token, user_id, now.isoformat(), expires_at),
+        )
+        await db.commit()
+    return token
+
+
+async def consume_login_token(token: str) -> int | None:
+    """Tokenni bir marta ishlatib, foydalanuvchi ID'sini qaytaradi.
+    Muddati o'tgan yoki avval ishlatilgan bo'lsa None qaytaradi."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM login_tokens WHERE token = ?", (token,))
+        row = await cur.fetchone()
+        if not row or row["used"]:
+            return None
+        if datetime.fromisoformat(row["expires_at"]) < datetime.utcnow():
+            return None
+        await db.execute("UPDATE login_tokens SET used = 1 WHERE token = ?", (token,))
+        await db.commit()
+        return row["user_id"]
+
+
+async def create_session(user_id: int, ttl_days: int = 30) -> str:
+    session_id = secrets.token_urlsafe(32)
+    now = datetime.utcnow()
+    expires_at = (now + timedelta(days=ttl_days)).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO sessions (session_id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (session_id, user_id, now.isoformat(), expires_at),
+        )
+        await db.commit()
+    return session_id
+
+
+async def get_session_user_id(session_id: str) -> int | None:
+    if not session_id:
+        return None
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
+        row = await cur.fetchone()
+        if not row:
+            return None
+        if datetime.fromisoformat(row["expires_at"]) < datetime.utcnow():
+            await db.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+            await db.commit()
+            return None
+        return row["user_id"]
+
+
+async def delete_session(session_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
         await db.commit()

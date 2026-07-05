@@ -13,6 +13,7 @@ class AddEpisode(StatesGroup):
     choose_anime = State()
     episode_number = State()
     video = State()
+    public_post = State()
 
 
 class DeleteAnime(StatesGroup):
@@ -37,3 +38,7 @@ class GrantVip(StatesGroup):
 
 class RemoveVip(StatesGroup):
     user_id = State()
+
+
+class EditProfile(StatesGroup):
+    display_name = State()
