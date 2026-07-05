@@ -712,6 +712,7 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None,
             "O'ZBEK TILIDA SIFATLI DUBLYAJ",
             "TELEGRAM BOT ORQALI ISTALGAN JOYDA TOMOSHA QILING",
         ]
+    marquee_items = pad_marquee_items(marquee_items)
     track = " &nbsp;&#10022;&nbsp; ".join(html.escape(m) for m in marquee_items)
     marquee_html = f'<span>{track}</span> &nbsp;&#10022;&nbsp; <span>{track}</span>'
     theme_icon = "☀️" if theme == "light" else "🌙"
@@ -794,7 +795,20 @@ def anime_card_html(a, is_new: bool = False) -> str:
 </a>"""
 
 
-def pager_html(base_url: str, offset: int, total: int) -> str:
+def pad_marquee_items(items: list[str], min_chars: int = 260) -> list[str]:
+    """Marquee tasmasi juda qisqa bo'lsa (masalan bitta-ikkita anime bo'lganda),
+    matn deyarli ko'rinmay, uzilib-uzilib "ishlamayotgandek" tuyuladi -- shu
+    sababli umumiy uzunlik yetarli bo'lguncha ro'yxatni takrorlaymiz, shunda
+    tasma har doim to'liq va tekis yuguradi."""
+    items = [i for i in items if i]
+    if not items:
+        return items
+    result = list(items)
+    guard = 0
+    while sum(len(i) for i in result) < min_chars and guard < 8:
+        result += items
+        guard += 1
+    return result
     parts = []
     if offset > 0:
         prev_offset = max(offset - PAGE_SIZE, 0)
@@ -835,7 +849,13 @@ async def home(request):
         grid = '<p class="empty">Hozircha animelar qo\'shilmagan.</p>'
 
     genre_links = "".join(f'<a href="/janr/{quote(g)}">{html.escape(g)}</a>' for g in genres[:12])
-    marquee_items = [a["title"] for a in featured] or None
+    info_lines = [
+        "YANGI QISMLAR MUNTAZAM YUKLANADI",
+        "O'ZBEK TILIDA SIFATLI DUBLYAJ",
+        "TELEGRAM BOT ORQALI ISTALGAN JOYDA TOMOSHA QILING",
+    ]
+    anime_titles = [a["title"] for a in featured]
+    marquee_items = pad_marquee_items(info_lines + anime_titles)
 
     body = f"""
 <section class="hero">
