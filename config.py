@@ -51,17 +51,25 @@ SITE_URL = os.getenv("SITE_URL", "https://star-dubbing.onrender.com").rstrip("/"
 # o'zgaruvchi endi kerak emas va olib tashlandi.
 
 # Majburiy obuna kanallari — to'g'ridan-to'g'ri shu yerda (kodda) belgilanadi.
-# chat_id: kanal username (@ bilan) yoki -100... ko'rinishidagi ID.
-# Bot bu kanallarda ADMIN bo'lishi shart, aks holda obunani tekshira olmaydi.
+# chat_id: kanal username (@ bilan) yoki -100... ko'rinishidagi ID -- foydalanuvchiga
+#          "obuna bo'ling" tugmasida ko'rsatiladigan/link qilinadigan kanal.
+# check_chat_id: obunani TEKSHIRISH uchun ishlatiladigan chat -- ba'zi kanallarda
+#          Telegram getChatMember so'rovini "member list is inaccessible" deb
+#          rad etadi, shuning uchun kanalga bog'langan MUHOKAMA GURUHI orqali
+#          tekshiramiz (foydalanuvchi kanalga obuna bo'lsa, avtomatik shu
+#          guruhga ham "a'zo" hisoblanadi). Agar berilmasa, chat_id ishlatiladi.
+# Bot HAR IKKALASIDA (kanal va guruhda) ADMIN bo'lishi shart.
 REQUIRED_CHANNELS = [
     {
         "chat_id": "@stardub_best",
         "title": "Stardub",
         "invite_link": "https://t.me/stardub_best",
+        "check_chat_id": "@animechat_123",
     },
     {
         "chat_id": "@xumoyun_best",
         "title": "Xumoyun",
         "invite_link": "https://t.me/xumoyun_best",
+        "check_chat_id": "@Worldchat_best",
     },
 ]

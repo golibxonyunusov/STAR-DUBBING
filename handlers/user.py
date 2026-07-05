@@ -82,15 +82,16 @@ async def check_subscription(bot: Bot, user_id: int) -> bool:
         logging.info("[OBUNA] Ro'yxatda kanal yo'q, tekshiruv o'tkazib yuborildi.")
         return True
     for ch in channels:
+        verify_chat_id = ch.get("check_chat_id") or ch["chat_id"]
         try:
-            member = await bot.get_chat_member(chat_id=ch["chat_id"], user_id=user_id)
-            logging.info(f"[OBUNA] kanal={ch['chat_id']} user={user_id} status={member.status}")
+            member = await bot.get_chat_member(chat_id=verify_chat_id, user_id=user_id)
+            logging.info(f"[OBUNA] kanal={ch['chat_id']} (tekshirish={verify_chat_id}) user={user_id} status={member.status}")
             if member.status in ("left", "kicked"):
                 logging.info(f"[OBUNA] user={user_id} {ch['chat_id']}ga obuna emas -- BLOKLANDI.")
                 return False
         except TelegramBadRequest as e:
             # bot kanalga admin qilib qo'yilmagan yoki chat topilmadi -- bloklamaymiz
-            logging.warning(f"[OBUNA] kanal={ch['chat_id']} tekshirib bo'lmadi: {e} -- o'tkazib yuborildi.")
+            logging.warning(f"[OBUNA] kanal={verify_chat_id} tekshirib bo'lmadi: {e} -- o'tkazib yuborildi.")
             continue
     logging.info(f"[OBUNA] user={user_id} barcha kanallarga obuna -- O'TDI.")
     return True
