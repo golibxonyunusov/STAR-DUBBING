@@ -1,7 +1,7 @@
-# AniSinus Bot
+# STAR DUBBING Bot
 
-O'zbek tilida dublyaj qilingan anime/animelarni foydalanuvchilarga yetkazib beruvchi Telegram bot.
-`@STAR_DUBBING_bot` ga o'xshash: qidirish, katalog, janrlar, epizodlarni ko'rish, majburiy obuna,
+O'zbek tilida dublyaj qilingan anime/animelarni foydalanuvchilarga yetkazib beruvchi Telegram bot:
+qidirish, katalog, janrlar, epizodlarni ko'rish, majburiy obuna,
 admin panel (anime/epizod qo'shish, statistika, xabar yuborish).
 
 ## 1. O'rnatish
@@ -63,8 +63,8 @@ anisinus_bot/
 ## 6. Nima uchun video fayllar to'g'ridan-to'g'ri Telegram orqali saqlanadi?
 
 Har bir video Telegram serverida saqlanadi, biz faqat uning `file_id` sini bazaga yozamiz.
-Shu sababli serverda joy tejaladi va video yuborish tezkor bo'ladi — bu aynan AniSinusBot
-kabi botlarda ishlatiladigan usul.
+Shu sababli serverda joy tejaladi va video yuborish tezkor bo'ladi — bu shunga o'xshash
+botlarda keng ishlatiladigan usul.
 
 ## 6.1. Videoni saytda (Telegramga chiqmasdan) tomosha qilish
 
@@ -135,7 +135,7 @@ qidiriladi.
 - Anime uchun reyting/izoh qo'shish
 - "Sevimlilar" ro'yxati (foydalanuvchi anime saqlab qo'yishi)
 - Yangi epizod chiqqanda avtomatik xabarnoma yuborish
-- Inline mode (`@AniSinusBot nomi` deb yozib istalgan chatda qidirish)
+- Inline mode (`@BotUsername nomi` deb yozib istalgan chatda qidirish)
 
 git add .
 git commit -m "yangilanish"

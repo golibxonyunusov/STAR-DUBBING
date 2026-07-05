@@ -216,7 +216,7 @@ async def paginate_genre_list(call: CallbackQuery):
 @router.message(F.text == "ℹ️ Bot haqida")
 async def about_bot(message: Message):
     await message.answer(
-        "🎌 <b>AniSinus</b>\n\n"
+        "✦ <b>STAR DUBBING</b>\n\n"
         "Ushbu bot orqali anime va animelarning o'zbek tilidagi dublyajini "
         "bepul tomosha qilishingiz mumkin.\n\n"
         "📖 <b>Botdan foydalanish tartibi:</b>\n\n"
