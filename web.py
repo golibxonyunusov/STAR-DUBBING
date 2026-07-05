@@ -1123,8 +1123,14 @@ async def episode_watch(request):
 <div class="watch-wrap">
   <script async src="https://telegram.org/js/telegram-widget.js?22"
     data-telegram-post="{PUBLIC_CHANNEL_USERNAME}/{episode['public_msg_id']}"
-    data-width="100%"></script>
+    data-width="100%"
+    data-dark="{1 if theme == 'dark' else 0}"
+    data-userpic="false"></script>
 </div>
+<p class="mono" style="font-size:11.5px;color:var(--muted);margin-top:8px">
+  ℹ️ Video Telegram orqali ko'rsatiladi -- ijro qilish uchun ▶ tugmasini bosing,
+  so'ng pastdagi chiziqni sudrab oldinga/orqaga o'tkazishingiz mumkin.
+</p>
 <div class="watch-nav">{''.join(nav)}</div>
 """
     return web.Response(
