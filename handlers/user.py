@@ -13,6 +13,8 @@ from config import (
     SEARCH_IMAGE_PATH,
     CATALOG_IMAGE_PATH,
     GENRES_IMAGE_PATH,
+    PROFIL_IMAGE_PATH,
+    VIP_IMAGE_PATH,
 )
 from states import EditProfile
 from keyboards import (
@@ -309,20 +311,22 @@ async def vip_status(message: Message):
             muddat = f"tugash sanasi: {vip['expires_at'][:10]}"
         else:
             muddat = "umrbod ♾"
-        await message.answer(
+        caption = (
             f"👑 Siz <b>VIP</b> foydalanuvchisiz!\n"
             f"📅 {muddat}\n\n"
             f"✅ Majburiy obunasiz botdan foydalanasiz\n"
             f"✅ Barcha VIP-only animelarni ko'ra olasiz"
         )
     else:
-        await message.answer(
-            "👑 Siz hozircha VIP emassiz.\n\n"
+        caption = (
+            "👑 <b>VIP maqomi</b>\n\n"
+            "Yulduzlar orasidagi eng maxsus joy — sizni kutmoqda! ✨\n\n"
             "VIP status orqali:\n"
             "✅ Majburiy obunasiz botdan foydalanish\n"
             "✅ Yopiq (VIP-only) animelarni ko'rish imkoniga ega bo'lasiz\n\n"
             "VIP olish uchun @rudeus1111 bilan bog'laning."
         )
+    await send_section_photo(message, "vip", VIP_IMAGE_PATH, caption)
 
 
 # ---------- PROFIL ----------
@@ -338,7 +342,7 @@ async def show_profile(message: Message):
     if vip:
         vip_line = "♾ Umrbod" if not vip["expires_at"] else f"✅ {vip['expires_at'][:10]} gacha"
 
-    text = (
+    caption = (
         f"🧑\u200d🚀 <b>Profil</b>\n\n"
         f"📛 Ism: <b>{display_name}</b>\n"
         f"🆔 Telegram ID: <code>{message.from_user.id}</code>\n"
@@ -347,7 +351,7 @@ async def show_profile(message: Message):
         f"🌐 Profilingizni saytda ham ochib, mavzu va bildirishnoma "
         f"sozlamalarini boshqarishingiz mumkin."
     )
-    await message.answer(text, reply_markup=profile_kb())
+    await send_section_photo(message, "profil", PROFIL_IMAGE_PATH, caption, reply_markup=profile_kb())
 
 
 @router.callback_query(F.data == "profile_edit_name")

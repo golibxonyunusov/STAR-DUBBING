@@ -138,5 +138,5 @@ qidiriladi.
 - Inline mode (`@BotUsername nomi` deb yozib istalgan chatda qidirish)
 
 git add .
-git commit -m "kichik o'zgarish"
+git commit -m "barcha rasmlar qo'shildi"
 git push

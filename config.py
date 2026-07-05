@@ -30,6 +30,8 @@ _ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "handlers
 SEARCH_IMAGE_PATH = os.path.join(_ASSETS_DIR, "search.jpg")
 CATALOG_IMAGE_PATH = os.path.join(_ASSETS_DIR, "catalog.jpg")
 GENRES_IMAGE_PATH = os.path.join(_ASSETS_DIR, "genres.jpg")
+PROFIL_IMAGE_PATH = os.path.join(_ASSETS_DIR, "profil.jpg")
+VIP_IMAGE_PATH = os.path.join(_ASSETS_DIR, "vip.jpg")
 
 PAGE_SIZE = 8  # bitta sahifada nechta anime/epizod ko'rsatish
 
