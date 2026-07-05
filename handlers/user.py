@@ -31,24 +31,23 @@ from keyboards import (
 
 router = Router()
 
-# Xush kelibsiz rasmining file_id keshi -- birinchi yuborilgandan keyin
-# Telegram file_id orqali qayta yuboriladi (qayta yuklash shart emas).
-_welcome_photo_file_id: str | None = None
 
-# Qidirish/Barcha animelar/Janrlar bo'limlarining rasm file_id keshi.
-_section_photo_ids: dict[str, str] = {}
-
-
-async def send_section_photo(message: Message, key: str, path: str, caption: str, reply_markup=None):
-    """Berilgan bo'lim uchun rasm + matnni birga yuboradi, file_id'ni keshlaydi."""
-    photo = _section_photo_ids.get(key) or FSInputFile(path)
+async def send_cached_photo(message: Message, key: str, path: str, caption: str = None, reply_markup=None):
+    """Rasmni yuboradi -- birinchi marta fayldan, keyingi safarlarda (hatto bot
+    qayta ishga tushgandan keyin ham) bazada saqlangan Telegram file_id orqali
+    (tez, qayta yuklamasdan)."""
+    cached_id = await db.get_asset_file_id(key)
+    photo = cached_id or FSInputFile(path)
     sent = await message.answer_photo(photo=photo, caption=caption, reply_markup=reply_markup)
-    if key not in _section_photo_ids and sent.photo:
-        _section_photo_ids[key] = sent.photo[-1].file_id
+    if not cached_id and sent.photo:
+        await db.set_asset_file_id(key, sent.photo[-1].file_id)
+
+
+# Eski nom bilan ham ishlatilishi mumkin (ichkarida send_cached_photo'ga o'tkazadi).
+send_section_photo = send_cached_photo
 
 
 async def send_welcome_message(message: Message):
-    global _welcome_photo_file_id
     caption = (
         "<b>STAR DUBBING</b> ga xush kelibsiz!\n\n"
         "Bu yerda sevimli anime va animelaringizning o'zbek tilidagi dublyaj qilingan "
@@ -57,10 +56,7 @@ async def send_welcome_message(message: Message):
         "🌌 Barcha animelar bo'limidan ro'yxatni ko'ring\n"
         "🪐 Janrlar bo'yicha tanlang"
     )
-    photo = _welcome_photo_file_id or FSInputFile(WELCOME_IMAGE_PATH)
-    sent = await message.answer_photo(photo=photo, caption=caption, reply_markup=main_menu_kb())
-    if not _welcome_photo_file_id and sent.photo:
-        _welcome_photo_file_id = sent.photo[-1].file_id
+    await send_cached_photo(message, "welcome_v2", WELCOME_IMAGE_PATH, caption, reply_markup=main_menu_kb())
 
 
 # ---------- MAJBURIY OBUNA ----------

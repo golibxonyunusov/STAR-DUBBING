@@ -65,6 +65,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at TEXT,
     expires_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS bot_assets (
+    key TEXT PRIMARY KEY,
+    file_id TEXT NOT NULL
+);
 """
 
 
@@ -505,4 +510,27 @@ async def get_session_user_id(session_id: str) -> int | None:
 async def delete_session(session_id: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+        await db.commit()
+
+
+# ---------- BOT ASSETS (rasm file_id keshi) ----------
+# Xush kelibsiz/Qidirish/Barcha animelar/Janrlar/Profil/VIP rasmlarining
+# Telegram file_id'lari shu yerda saqlanadi -- shunda bot qayta ishga
+# tushganda ham (Render bepul tarifda "uxlab" qolib, keyin uyg'onganda ham)
+# rasm qayta yuklanmaydi, faqat file_id orqali darhol yuboriladi (tez).
+
+async def get_asset_file_id(key: str) -> str | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT file_id FROM bot_assets WHERE key = ?", (key,))
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+
+async def set_asset_file_id(key: str, file_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO bot_assets (key, file_id) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET file_id = excluded.file_id",
+            (key, file_id),
+        )
         await db.commit()
