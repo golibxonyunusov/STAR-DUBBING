@@ -24,7 +24,7 @@ from urllib.parse import quote
 from aiohttp import web
 
 import database as db
-from config import BOT_USERNAME, PAGE_SIZE, PUBLIC_CHANNEL_USERNAME
+from config import BOT_USERNAME, PAGE_SIZE
 
 ACCENT = "#9b8cff"
 
@@ -525,7 +525,7 @@ STYLES = """
     max-width: 720px; margin: 22px 0; border-radius: 12px; overflow: hidden;
     border: 1px solid var(--line); background: #000;
   }
-  .watch-embed { width: 100%; min-height: 360px; }
+  .watch-embed { display: block; width: 100%; min-height: 360px; max-height: 70vh; background: #000; }
   .watch-nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 16px; max-width: 720px; }
   .watch-title { font-size: 15px; font-weight: 700; margin: 18px 0 4px; }
 
@@ -1033,7 +1033,7 @@ async def anime_detail(request):
     elif episodes:
         buttons = []
         for ep in episodes:
-            if ep["public_msg_id"]:
+            if ep["web_video_url"]:
                 href = f'/anime/{anime_id}/qism/{ep["episode_number"]}'
             else:
                 href = f'https://t.me/{BOT_USERNAME}?start=ep_{anime_id}_{ep["episode_number"]}'
@@ -1064,8 +1064,10 @@ async def anime_detail(request):
 
 
 async def episode_watch(request):
-    """Epizodni saytning o'zida (Telegramga chiqmasdan) ko'rsatadi -- OCHIQ
-    kanaldagi mos post Telegram widget orqali sahifaga o'rnatiladi."""
+    """Epizodni saytning o'zida ko'rsatadi -- Telegram bilan hech qanday
+    aloqasi bo'lmagan, alohida saqlangan to'g'ridan-to'g'ri video havolasi
+    orqali (<video> tegi bilan). Shu sababli sayt orqali Telegram kanali
+    hech qachon ko'rinmaydi."""
     current_user = await get_current_user(request)
     theme = get_theme(request, current_user)
     try:
@@ -1094,7 +1096,7 @@ async def episode_watch(request):
     if not episode:
         raise web.HTTPNotFound()
 
-    if not episode["public_msg_id"]:
+    if not episode["web_video_url"]:
         body = (
             '<div class="lock-notice" style="max-width:560px">ℹ️ Bu qism hali saytga bog\'lanmagan. '
             f'Hozircha <a href="https://t.me/{BOT_USERNAME}?start=ep_{anime_id}_{ep_num}">Telegram bot orqali</a> '
@@ -1118,19 +1120,12 @@ async def episode_watch(request):
     else:
         nav.append("<span></span>")
 
+    video_url = html.escape(episode["web_video_url"], quote=True)
     body = f"""
 <h1 class="watch-title">{html.escape(anime['title'])} — {ep_num}-qism</h1>
 <div class="watch-wrap">
-  <script async src="https://telegram.org/js/telegram-widget.js?22"
-    data-telegram-post="{PUBLIC_CHANNEL_USERNAME}/{episode['public_msg_id']}"
-    data-width="100%"
-    data-dark="{1 if theme == 'dark' else 0}"
-    data-userpic="false"></script>
+  <video class="watch-embed" controls preload="metadata" playsinline src="{video_url}"></video>
 </div>
-<p class="mono" style="font-size:11.5px;color:var(--muted);margin-top:8px">
-  ℹ️ Video Telegram orqali ko'rsatiladi -- ijro qilish uchun ▶ tugmasini bosing,
-  so'ng pastdagi chiziqni sudrab oldinga/orqaga o'tkazishingiz mumkin.
-</p>
 <div class="watch-nav">{''.join(nav)}</div>
 """
     return web.Response(

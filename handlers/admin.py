@@ -1,12 +1,10 @@
-import re
-
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
 import database as db
-from config import ADMIN_IDS, PUBLIC_CHANNEL_USERNAME
+from config import ADMIN_IDS
 from states import AddAnime, AddEpisode, DeleteAnime, Broadcast, AddChannel, GrantVip, RemoveVip, LinkEpisode
 from keyboards import (
     admin_menu_kb,
@@ -151,15 +149,15 @@ async def add_episode_video(message: Message, state: FSMContext):
 
     episode_id = await db.add_episode(data["anime_id"], data["episode_number"], file_id)
     await state.update_data(episode_id=episode_id)
-    await state.set_state(AddEpisode.public_post)
+    await state.set_state(AddEpisode.web_video)
     await message.answer(
-        f"✅ Video saqlandi.\n\n"
-        f"📡 Endi shu epizodni OCHIQ kanaldagi (@{PUBLIC_CHANNEL_USERNAME}) postiga bog'lab qo'yamiz -- "
-        f"shunda u saytda Telegramga chiqmasdan tomosha qilinadi.\n\n"
-        f"Avval videoni @{PUBLIC_CHANNEL_USERNAME} kanaliga joylang, so'ng shu postning havolasini "
-        f"(masalan: <code>https://t.me/{PUBLIC_CHANNEL_USERNAME}/123</code>) yuboring.\n\n"
+        f"✅ Video saqlandi (bu — Telegram bot uchun, file_id orqali).\n\n"
+        f"🌐 Endi SAYT uchun ALOHIDA video havolasini yuboring -- bu Telegramdagi videodan "
+        f"mustaqil, boshqa hostingga (masalan YouTube, Google Drive, yoki to'g'ridan-to'g'ri "
+        f".mp4 link beruvchi xizmat) joylangan bo'lishi kerak. Faqat to'g'ridan-to'g'ri "
+        f"havolani yuboring (http:// yoki https:// bilan boshlanishi kerak).\n\n"
         f"Agar hozircha bu qadamni o'tkazib yubormoqchi bo'lsangiz, /skip yozing "
-        f"(keyinroq admin paneldan qo'shib qo'yish mumkin bo'ladi)."
+        f"(keyinroq \"🔗 Epizodni saytga bog'lash\" orqali qo'shib qo'yish mumkin)."
     )
 
 
@@ -168,38 +166,36 @@ async def add_episode_video_invalid(message: Message):
     await message.answer("Iltimos, video fayl yuboring.")
 
 
-@router.message(AddEpisode.public_post, Command("skip"))
-async def add_episode_public_post_skip(message: Message, state: FSMContext):
+@router.message(AddEpisode.web_video, Command("skip"))
+async def add_episode_web_video_skip(message: Message, state: FSMContext):
     data = await state.get_data()
     anime = await db.get_anime(data["anime_id"])
     await state.clear()
     await message.answer(
         f"✅ \"{anime['title']}\" — {data['episode_number']}-qism qo'shildi!\n"
-        f"ℹ️ Sayt uchun ochiq kanal posti hali bog'lanmadi -- bu epizod saytda faqat "
+        f"ℹ️ Sayt uchun video havolasi hali qo'shilmadi -- bu epizod saytda faqat "
         f"Telegram orqali (bot deep-link) ko'rinadi.",
         reply_markup=admin_menu_kb(),
     )
 
 
-@router.message(AddEpisode.public_post)
-async def add_episode_public_post(message: Message, state: FSMContext):
+@router.message(AddEpisode.web_video)
+async def add_episode_web_video(message: Message, state: FSMContext):
     data = await state.get_data()
-    text = (message.text or "").strip()
-    match = re.search(r"t\.me/([A-Za-z0-9_]+)/(\d+)", text)
-    if not match or match.group(1).lower() != PUBLIC_CHANNEL_USERNAME.lower():
+    url = (message.text or "").strip()
+    if not url.lower().startswith(("http://", "https://")):
         await message.answer(
-            f"⚠️ Havola noto'g'ri. @{PUBLIC_CHANNEL_USERNAME} kanalidagi post havolasini yuboring "
-            f"(masalan: <code>https://t.me/{PUBLIC_CHANNEL_USERNAME}/123</code>) yoki /skip yozing."
+            "⚠️ Havola noto'g'ri. To'g'ridan-to'g'ri video havolasini yuboring "
+            "(http:// yoki https:// bilan boshlanishi kerak) yoki /skip yozing."
         )
         return
 
-    public_msg_id = int(match.group(2))
-    await db.set_episode_public_msg(data["episode_id"], public_msg_id)
+    await db.set_episode_web_video(data["episode_id"], url)
     anime = await db.get_anime(data["anime_id"])
     await state.clear()
     await message.answer(
         f"✅ \"{anime['title']}\" — {data['episode_number']}-qism qo'shildi va saytga bog'landi!\n"
-        f"🌐 Endi bu epizod saytda to'g'ridan-to'g'ri tomosha qilinadi.",
+        f"🌐 Endi bu epizod saytda to'g'ridan-to'g'ri (Telegram kanalisiz) tomosha qilinadi.",
         reply_markup=admin_menu_kb(),
     )
 
@@ -245,32 +241,30 @@ async def link_episode_number(message: Message, state: FSMContext):
         await message.answer(f"⚠️ {ep_num}-qism topilmadi. Boshqa raqam kiriting yoki /cancel yozing.")
         return
     await state.update_data(episode_id=episode["id"], episode_number=ep_num)
-    await state.set_state(LinkEpisode.post_link)
+    await state.set_state(LinkEpisode.web_video_link)
     await message.answer(
-        f"📡 Endi @{PUBLIC_CHANNEL_USERNAME} kanalidagi shu epizodning post havolasini yuboring "
-        f"(masalan: <code>https://t.me/{PUBLIC_CHANNEL_USERNAME}/123</code>)."
+        "🌐 Endi shu epizod uchun SAYTGA mo'ljallangan to'g'ridan-to'g'ri video havolasini yuboring "
+        "(http:// yoki https:// bilan boshlanishi kerak)."
     )
 
 
-@router.message(LinkEpisode.post_link)
-async def link_episode_post_link(message: Message, state: FSMContext):
+@router.message(LinkEpisode.web_video_link)
+async def link_episode_web_video(message: Message, state: FSMContext):
     data = await state.get_data()
-    text = (message.text or "").strip()
-    match = re.search(r"t\.me/([A-Za-z0-9_]+)/(\d+)", text)
-    if not match or match.group(1).lower() != PUBLIC_CHANNEL_USERNAME.lower():
+    url = (message.text or "").strip()
+    if not url.lower().startswith(("http://", "https://")):
         await message.answer(
-            f"⚠️ Havola noto'g'ri yoki kanal @{PUBLIC_CHANNEL_USERNAME} bilan mos kelmadi. "
-            f"To'g'ri havolani qayta yuboring (masalan: <code>https://t.me/{PUBLIC_CHANNEL_USERNAME}/123</code>)."
+            "⚠️ Havola noto'g'ri. To'g'ridan-to'g'ri video havolasini qayta yuboring "
+            "(http:// yoki https:// bilan boshlanishi kerak)."
         )
         return
 
-    public_msg_id = int(match.group(2))
-    await db.set_episode_public_msg(data["episode_id"], public_msg_id)
+    await db.set_episode_web_video(data["episode_id"], url)
     anime = await db.get_anime(data["anime_id"])
     await state.clear()
     await message.answer(
         f"✅ \"{anime['title']}\" — {data['episode_number']}-qism saytga bog'landi!\n"
-        f"🌐 Endi u saytda to'g'ridan-to'g'ri tomosha qilinadi.",
+        f"🌐 Endi u saytda to'g'ridan-to'g'ri (Telegram kanalisiz) tomosha qilinadi.",
         reply_markup=admin_menu_kb(),
     )
 

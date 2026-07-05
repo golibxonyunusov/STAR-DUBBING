@@ -79,9 +79,19 @@ async def init_db():
             pass
         # Eski bazalarda "episodes" jadvalida public_msg_id ustuni bo'lmasligi mumkin --
         # bu ustun videoni OCHIQ kanaldagi mos postining xabar ID'sini saqlaydi
-        # (saytda "Telegramga chiqmasdan" tomosha qilish uchun kerak).
+        # (eski usul -- Telegram widget orqali ko'rsatish uchun ishlatilgan edi,
+        # endi ishlatilmaydi, lekin eski bazalar bilan moslik uchun qoldirilgan).
         try:
             await db.execute("ALTER TABLE episodes ADD COLUMN public_msg_id INTEGER")
+        except Exception:
+            pass
+        # web_video_url -- saytda to'g'ridan-to'g'ri ko'rsatiladigan video havolasi
+        # (masalan, .mp4 to'g'ridan-to'g'ri havolasi yoki boshqa hostingdagi link).
+        # Bu Telegram file_id'dan MUSTAQIL: botda video file_id orqali, saytda esa
+        # shu alohida havola orqali ko'rsatiladi -- shu sababli saytda Telegram
+        # kanali hech qanday ko'rinishda ko'rinmaydi.
+        try:
+            await db.execute("ALTER TABLE episodes ADD COLUMN web_video_url TEXT")
         except Exception:
             pass
         await db.commit()
@@ -287,11 +297,21 @@ async def delete_episode(episode_id: int):
 
 
 async def set_episode_public_msg(episode_id: int, public_msg_id: int | None):
-    """Epizodni OCHIQ kanaldagi mos postining xabar ID'siga bog'laydi --
-    shu orqali sayt videoni Telegramga chiqmasdan (widget/iframe) ko'rsata oladi."""
+    """Eski usul (endi ishlatilmaydi) -- moslik uchun qoldirilgan."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "UPDATE episodes SET public_msg_id = ? WHERE id = ?", (public_msg_id, episode_id)
+        )
+        await db.commit()
+
+
+async def set_episode_web_video(episode_id: int, web_video_url: str | None):
+    """Epizodning sayt uchun to'g'ridan-to'g'ri video havolasini saqlaydi.
+    Bu Telegram file_id'dan mustaqil -- sayt shu havoladan foydalanadi,
+    bot esa file_id orqali (Telegram ichida) videoni yuboradi."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE episodes SET web_video_url = ? WHERE id = ?", (web_video_url, episode_id)
         )
         await db.commit()
 

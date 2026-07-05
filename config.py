@@ -29,11 +29,11 @@ BOT_USERNAME = os.getenv("BOT_USERNAME", "").lstrip("@").strip()
 # Bot shu domen asosida "veb-profilga kirish" havolalarini tuzadi.
 SITE_URL = os.getenv("SITE_URL", "https://star-dubbing.onrender.com").rstrip("/")
 
-# Video postlar joylangan OCHIQ (public, @username bor) Telegram kanal.
-# Shu kanaldagi postni saytda "iframe/widget" orqali ko'rsatish uchun ishlatiladi
-# (Telegram bu kanalning postini boshqa saytga o'rnatishga ruxsat beradi, chunki u ochiq).
-# @ belgisisiz kiritiladi, masalan: PUBLIC_CHANNEL_USERNAME=sjoshsbshdjdhdjv
-PUBLIC_CHANNEL_USERNAME = os.getenv("PUBLIC_CHANNEL_USERNAME", "sjoshsbshdjdhdjv").lstrip("@").strip()
+# ESKI USUL (endi ishlatilmaydi): avval sayt videolarni OCHIQ Telegram kanali
+# postidan Telegram widget orqali ko'rsatar edi. Endi har bir epizod uchun
+# saytga ALOHIDA to'g'ridan-to'g'ri video havolasi qo'shiladi (admin panel
+# orqali, "episodes.web_video_url" ustunida saqlanadi) -- shuning uchun bu
+# o'zgaruvchi endi kerak emas va olib tashlandi.
 
 # Majburiy obuna kanallari — to'g'ridan-to'g'ri shu yerda (kodda) belgilanadi.
 # chat_id: kanal username (@ bilan) yoki -100... ko'rinishidagi ID.

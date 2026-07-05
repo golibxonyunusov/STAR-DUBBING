@@ -13,7 +13,7 @@ class AddEpisode(StatesGroup):
     choose_anime = State()
     episode_number = State()
     video = State()
-    public_post = State()
+    web_video = State()  # sayt uchun to'g'ridan-to'g'ri video havolasi
 
 
 class DeleteAnime(StatesGroup):
@@ -47,4 +47,4 @@ class EditProfile(StatesGroup):
 class LinkEpisode(StatesGroup):
     choose_anime = State()
     episode_number = State()
-    post_link = State()
+    web_video_link = State()

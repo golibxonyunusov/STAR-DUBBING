@@ -1,7 +1,7 @@
 # AniSinus Bot
 
 O'zbek tilida dublyaj qilingan anime/animelarni foydalanuvchilarga yetkazib beruvchi Telegram bot.
-`@AniSinusBot` ga o'xshash: qidirish, katalog, janrlar, epizodlarni ko'rish, majburiy obuna,
+`@STAR_DUBBING_bot` ga o'xshash: qidirish, katalog, janrlar, epizodlarni ko'rish, majburiy obuna,
 admin panel (anime/epizod qo'shish, statistika, xabar yuborish).
 
 ## 1. O'rnatish
@@ -68,22 +68,30 @@ kabi botlarda ishlatiladigan usul.
 
 ## 6.1. Videoni saytda (Telegramga chiqmasdan) tomosha qilish
 
-Sayt videoni to'g'ridan-to'g'ri Telegram serveridan ola olmaydi (bot API katta
-fayllarni yuklab olishga imkon bermaydi), shu sababli quyidagi usul qo'llanildi:
+Bot va sayt uchun video **ikki mustaqil manbadan** ko'rsatiladi — biri
+ikkinchisiga bog'liq emas:
 
-1. `.env` faylida `PUBLIC_CHANNEL_USERNAME` — videolar joylanadigan **ochiq**
-   (public, @username bor) Telegram kanal nomi ko'rsatiladi.
-2. Epizod qo'shishda (`🎬 Epizod qo'shish`) video yuborilgach, bot sizdan shu
-   videoning ochiq kanaldagi post havolasini so'raydi
-   (masalan: `https://t.me/PUBLIC_CHANNEL_USERNAME/123`).
-   - Avval videoni ochiq kanalga joylang, keyin uning havolasini botga yuboring.
-   - Agar hozircha ochiq kanalga joylay olmasangiz, `/skip` yozing — epizod
-     baribir qo'shiladi, lekin saytda faqat "Telegram bot orqali tomosha
-     qilish" tugmasi ko'rinadi (eski usul bo'yicha).
-3. Havola to'g'ri bo'lsa, sayt shu postni Telegramning rasmiy
-   `telegram-widget.js` orqali sahifaning o'ziga o'rnatadi — foydalanuvchi
-   hech qayerga chiqmasdan videoni ko'radi.
-4. VIP-only animelar uchun saytda tomosha qilish faqat **saytga kirgan va VIP
+- **Telegram bot** — video `file_id` orqali (Telegramning o'zida saqlanadi).
+- **Sayt** — har bir epizod uchun ADMIN tomonidan alohida kiritiladigan
+  **to'g'ridan-to'g'ri video havolasi** (`episodes.web_video_url` ustunida
+  saqlanadi) orqali. Bu havola istalgan hostingdan bo'lishi mumkin (masalan,
+  to'g'ridan-to'g'ri `.mp4` linki beruvchi xizmat). Muhimi — havola
+  `http://` yoki `https://` bilan boshlanishi va brauzerda to'g'ridan-to'g'ri
+  video sifatida ochilishi kerak.
+
+Shu sababli saytda **Telegram kanali umuman ko'rinmaydi** — na kanal nomi,
+na havolasi, chunki sayt Telegram widget/iframe emas, oddiy HTML5
+`<video>` tegi orqali ko'rsatadi.
+
+**Qo'shish tartibi:**
+
+1. `🎬 Epizod qo'shish` orqali video Telegramga (bot uchun) yuboriladi.
+2. Bot darhol sayt uchun alohida video havolasini so'raydi.
+   - Havolangiz bo'lsa — yuboring, epizod darhol saytga bog'lanadi.
+   - Hozircha yo'q bo'lsa — `/skip` yozing, epizod Telegram uchun
+     baribir qo'shiladi, saytga esa keyinroq `🔗 Epizodni saytga bog'lash`
+     orqali qaytib kiritish mumkin.
+3. VIP-only animelar uchun saytda tomosha qilish faqat **saytga kirgan va VIP
    statusi bor** foydalanuvchilarga ochiq (pastdagi "Veb-profil" bo'limiga
    qarang). Ochiq (VIP bo'lmagan) animelarni istalgan mehmon ko'ra oladi.
 
