@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import Router, F, Bot
 from aiogram.filters import CommandStart, CommandObject
 from aiogram.fsm.context import FSMContext
@@ -71,19 +73,26 @@ async def get_required_channels():
 async def check_subscription(bot: Bot, user_id: int) -> bool:
     # VIP foydalanuvchilar majburiy obunadan ozod
     if await db.is_vip(user_id):
+        logging.info(f"[OBUNA] user={user_id} VIP ekan, tekshiruv o'tkazib yuborildi.")
         return True
 
     channels = await get_required_channels()
+    logging.info(f"[OBUNA] user={user_id} uchun tekshiriladigan kanallar: {channels}")
     if not channels:
+        logging.info("[OBUNA] Ro'yxatda kanal yo'q, tekshiruv o'tkazib yuborildi.")
         return True
     for ch in channels:
         try:
             member = await bot.get_chat_member(chat_id=ch["chat_id"], user_id=user_id)
+            logging.info(f"[OBUNA] kanal={ch['chat_id']} user={user_id} status={member.status}")
             if member.status in ("left", "kicked"):
+                logging.info(f"[OBUNA] user={user_id} {ch['chat_id']}ga obuna emas -- BLOKLANDI.")
                 return False
-        except TelegramBadRequest:
+        except TelegramBadRequest as e:
             # bot kanalga admin qilib qo'yilmagan yoki chat topilmadi -- bloklamaymiz
+            logging.warning(f"[OBUNA] kanal={ch['chat_id']} tekshirib bo'lmadi: {e} -- o'tkazib yuborildi.")
             continue
+    logging.info(f"[OBUNA] user={user_id} barcha kanallarga obuna -- O'TDI.")
     return True
 
 
