@@ -18,6 +18,20 @@ STORAGE_CHANNEL_ID = os.getenv("STORAGE_CHANNEL_ID", "")
 
 DB_PATH = os.getenv("DB_PATH", "anisinus.db")
 
+# --- TURSO (bulutdagi doimiy baza) ---
+# Bot Render'da qayta ishga tushganda (uxlab qolish, qayta deploy, crash)
+# ma'lumotlar YO'QOLMASLIGI uchun baza endi Turso'da (bulutda) saqlanadi.
+# Ikkalasi ham bo'sh bo'lsa, dastur avtomatik ravishda yuqoridagi DB_PATH
+# bo'yicha oddiy mahalliy faylga yozadi (faqat lokal sinov uchun -- Render'da
+# bu holatda ma'lumotlar hamon yo'qolib turadi!).
+# https://turso.tech dan bepul ro'yxatdan o'tib oling:
+#   1) turso auth signup / turso auth login
+#   2) turso db create anisinus
+#   3) turso db show anisinus --url          -> TURSO_DATABASE_URL
+#   4) turso db tokens create anisinus       -> TURSO_AUTH_TOKEN
+TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL", "")
+TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "")
+
 # /start buyrug'ida (asosiy xush kelibsiz xabarida) tepasida ko'rsatiladigan rasm.
 # Fayl repoda "handlers/assets/welcome.jpg" da joylashgan.
 WELCOME_IMAGE_PATH = os.path.join(
