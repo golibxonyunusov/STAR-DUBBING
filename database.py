@@ -357,7 +357,10 @@ async def remove_required_channel(row_id: int):
 async def get_required_channels():
     client = get_client()
     rs = await client.execute("SELECT * FROM required_channels")
-    return rs.rows
+    # libsql_client'ning Row obyekti oddiy dict()ga aylanmaydi (Sequence, Mapping emas),
+    # shuning uchun handlerlarda "dict(ch)" chaqirilganda TypeError chiqmasligi uchun
+    # bu yerda o'zimiz ustun nomlari bilan dict qilib qaytaramiz.
+    return [dict(zip(rs.columns, row)) for row in rs.rows]
 
 
 # ---------- VIP FOYDALANUVCHILAR ----------
