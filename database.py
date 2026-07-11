@@ -139,6 +139,12 @@ async def init_db():
         await client.execute("ALTER TABLE episodes ADD COLUMN web_video_url TEXT")
     except Exception:
         pass
+    # views -- "TOP reyting" bo'limi uchun har bir anime nechta marta
+    # ochilganini sanaydi (anime_detail sahifasiga kirilganda +1 bo'ladi).
+    try:
+        await client.execute("ALTER TABLE anime ADD COLUMN views INTEGER DEFAULT 0")
+    except Exception:
+        pass
 
 
 # ---------- USERS ----------
@@ -267,6 +273,26 @@ async def count_anime(genre: str | None = None) -> int:
     else:
         rs = await client.execute("SELECT COUNT(*) FROM anime")
     return rs.rows[0][0] if rs.rows else 0
+
+
+async def increment_anime_views(anime_id: int):
+    """Anime tafsilot sahifasi ochilganda chaqiriladi -- TOP reyting shu
+    hisobga asoslanadi."""
+    client = get_client()
+    await client.execute(
+        "UPDATE anime SET views = COALESCE(views, 0) + 1 WHERE id = ?", (anime_id,)
+    )
+
+
+async def get_top_anime(limit: int = 20):
+    """Eng ko'p ko'rilgan animelar ro'yxati (views bo'yicha kamayish tartibida)."""
+    client = get_client()
+    rs = await client.execute(
+        "SELECT * FROM anime WHERE COALESCE(views, 0) > 0 "
+        "ORDER BY COALESCE(views, 0) DESC, id DESC LIMIT ?",
+        (limit,),
+    )
+    return rs.rows
 
 
 async def get_all_genres() -> list[str]:
