@@ -574,6 +574,50 @@ STYLES = """
   }
   .login-prompt .cta-primary { margin-top: 22px; }
 
+  /* ---- oddiy statik sahifalar (haqimizda / vip / aloqa) ---- */
+  .info-block {
+    max-width: 680px; color: #c9c6dc; font-size: 14.5px; margin-bottom: 18px;
+  }
+  .info-block p { margin: 0 0 14px; }
+  .perk-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px; max-width: 720px; margin: 22px 0;
+  }
+  .perk {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px; font-size: 13.5px;
+  }
+  .perk .perk-ic { font-size: 20px; display: block; margin-bottom: 8px; }
+  .perk b { display: block; margin-bottom: 4px; font-size: 14px; }
+  .contact-list { max-width: 480px; margin: 20px 0; }
+  .contact-row {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 15px 18px; margin-bottom: 10px; transition: border-color .2s;
+  }
+  a.contact-row:hover { border-color: var(--violet); }
+  .contact-row .c-ic { font-size: 19px; }
+  .contact-row .c-txt b { display: block; font-size: 13.5px; }
+  .contact-row .c-txt span { color: var(--muted); font-size: 12px; }
+
+  /* ---- FAQ ---- */
+  .faq-list { max-width: 720px; }
+  .faq-item {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    margin-bottom: 10px; overflow: hidden;
+  }
+  .faq-item summary {
+    cursor: pointer; padding: 16px 20px; font-weight: 600; font-size: 14px;
+    list-style: none; display: flex; justify-content: space-between; align-items: center;
+    gap: 10px;
+  }
+  .faq-item summary::-webkit-details-marker { display: none; }
+  .faq-item summary::after { content: "+"; color: var(--violet); font-size: 18px; font-weight: 400; }
+  .faq-item[open] summary::after { content: "−"; }
+  .faq-item .faq-a {
+    padding: 0 20px 18px; color: var(--muted); font-size: 13.5px; margin: 0;
+  }
+
   footer {
     text-align: center; color: var(--muted); font-size: 12.5px;
     padding: 44px 16px 32px; margin-top: 58px;
@@ -582,6 +626,9 @@ STYLES = """
   }
   footer .f-logo { color: var(--ink); font-weight: 700; letter-spacing: 0.5px; }
   footer a { color: var(--violet); font-weight: 600; }
+  footer .f-links { margin-top: 14px; display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+  footer .f-links a { color: var(--muted); font-weight: 500; }
+  footer .f-links a:hover { color: var(--violet); }
 
   @media (max-width: 560px) {
     .rail { padding: 5px 16px; }
@@ -747,7 +794,9 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None,
     <nav>
       <a href="/" class="{'active' if active == 'home' else ''}">Bosh sahifa</a>
       <a href="/janrlar" class="{'active' if active == 'janrlar' else ''}">Janrlar</a>
+      <a href="/top" class="{'active' if active == 'top' else ''}">🔥 TOP</a>
       <a href="/tasodifiy" class="{'active' if active == 'tasodifiy' else ''}">Tasodifiy</a>
+      <a href="/vip" class="{'active' if active == 'vip' else ''}">👑 VIP</a>
       {profile_link}
       <a href="https://t.me/{BOT_USERNAME}" class="{'active' if active == 'bot' else ''}">Telegram bot</a>
     </nav>
@@ -768,6 +817,12 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None,
   <div class="f-logo">✦ STAR DUBBING</div>
   <div style="margin-top:6px">o'zbek tilidagi anime dublyaj jamoasi. Barcha epizodlarni
   <a href="https://t.me/{BOT_USERNAME}">Telegram botimiz</a> orqali tomosha qiling.</div>
+  <div class="f-links">
+    <a href="/haqimizda">Biz haqimizda</a>
+    <a href="/vip">VIP</a>
+    <a href="/faq">Savol-javob</a>
+    <a href="/aloqa">Aloqa</a>
+  </div>
 </footer>
 <script>{SCRIPTS}</script>
 </body>
@@ -1336,6 +1391,164 @@ async def ping(request):
     return web.Response(text="STAR DUBBING bot va sayt ishlayapti ✅")
 
 
+# ---------- QO'SHIMCHA STATIK / YORDAMCHI BO'LIMLAR ----------
+
+async def about_page(request):
+    """'Biz haqimizda' -- jamoa va loyiha haqida qisqa statik sahifa."""
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
+    total = await db.count_anime()
+    genres = await db.get_all_genres()
+
+    body = f"""
+<h2 class="section"><span class="ic">&#10022;</span> Biz haqimizda</h2>
+<div class="info-block">
+  <p><b>STAR DUBBING</b> — o'zbek tilida sifatli anime dublyaji bilan shug'ullanuvchi kichik jamoa.
+  Maqsadimiz oddiy: sevimli animelaringizni tez, tushunarli va sifatli tarjima bilan yetkazish.</p>
+  <p>Har bir epizod avval tarjima qilinadi, so'ng dublyaj va montaj bosqichidan o'tadi, va faqat
+  shundan keyingina botga va saytga yuklanadi. Yangi qismlar muntazam ravishda qo'shib boriladi.</p>
+  <p>Barcha epizodlarni <a href="https://t.me/{BOT_USERNAME}">Telegram botimiz</a> orqali bepul tomosha qilish mumkin,
+  ba'zi maxsus animelar esa faqat <a href="/vip">VIP</a> foydalanuvchilar uchun ochiq.</p>
+</div>
+<div class="stats-row" style="justify-content:flex-start;margin-top:10px">
+  <div class="stat"><span class="num">{total}</span><span class="label">anime</span></div>
+  <div class="stat"><span class="num">{len(genres)}</span><span class="label">janr</span></div>
+  <div class="stat"><span class="num">24/7</span><span class="label">bot orqali</span></div>
+</div>
+<p style="margin-top:30px"><a class="cta-primary" href="https://t.me/{BOT_USERNAME}"><span class="play">▶</span> Botimizga qo'shiling</a></p>
+"""
+    return web.Response(
+        text=base_page("Biz haqimizda", body, active="haqimizda", current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
+
+
+async def top_page(request):
+    """'Ko'p ko'rilganlar / TOP' -- hozircha sayt alohida ko'rilish hisoblagichi
+    yuritmagani uchun, eng ko'p qismga ega bo'lgan (demak eng faol davom
+    etayotgan) animelar 'TOP' sifatida ko'rsatiladi. Kelajakda haqiqiy
+    ko'rilish sonini hisoblash kerak bo'lsa, database.py'ga alohida
+    view_count ustuni va uni oshiruvchi funksiya qo'shish kifoya."""
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
+
+    rows = await db.list_anime(offset=0, limit=200)
+    scored = []
+    for a in rows:
+        episodes = await db.get_episodes(a["id"])
+        scored.append((len(episodes), a))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    top_rows = [a for _, a in scored[:20]]
+
+    if top_rows:
+        grid = f'<div class="grid">{"".join(anime_card_html(a) for a in top_rows)}</div>'
+    else:
+        grid = '<p class="empty">Hozircha animelar qo\'shilmagan.</p>'
+
+    body = f"""
+<h2 class="section"><span class="ic">&#128293;</span> Ommabop / TOP <span class="count">{len(top_rows)}</span></h2>
+<p class="tagline" style="text-align:left;max-width:640px;margin:0 0 26px">
+Eng ko'p qismga ega va faol davom etayotgan animelar shu yerda to'plangan.</p>
+{grid}
+"""
+    return web.Response(
+        text=base_page("TOP", body, active="top", current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
+
+
+async def vip_page(request):
+    """VIP obuna haqida ma'lumot beruvchi sahifa -- kirgan foydalanuvchi
+    uchun joriy VIP holatini ham ko'rsatadi."""
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
+
+    status_html = ""
+    if current_user:
+        vip = current_user["vip"]
+        if vip:
+            muddat = "♾ Umrbod" if not vip["expires_at"] else f"{vip['expires_at'][:10]} gacha"
+            status_html = f"""
+<div class="profile-card" style="max-width:640px">
+  <div class="profile-row"><span class="lbl">👑 Sizning holatingiz</span><span class="val vip-yes">✅ VIP · {muddat}</span></div>
+</div>"""
+        else:
+            status_html = """
+<div class="profile-card" style="max-width:640px">
+  <div class="profile-row"><span class="lbl">👑 Sizning holatingiz</span><span class="val">Oddiy foydalanuvchi</span></div>
+</div>"""
+
+    body = f"""
+<h2 class="section"><span class="ic">👑</span> VIP obuna</h2>
+<p class="info-block">VIP obuna orqali quyidagi qo'shimcha imkoniyatlarga ega bo'lasiz:</p>
+<div class="perk-grid">
+  <div class="perk"><span class="perk-ic">🔓</span><b>Yopiq animelar</b>Faqat VIP uchun mo'ljallangan (VIP-only) animelarga to'liq kirish.</div>
+  <div class="perk"><span class="perk-ic">⚡</span><b>Erta kirish</b>Yangi qismlarga boshqalardan oldinroq kirish imkoniyati.</div>
+  <div class="perk"><span class="perk-ic">💬</span><b>VIP belgisi</b>Profilingizda va botda alohida VIP belgisi.</div>
+  <div class="perk"><span class="perk-ic">🚀</span><b>Loyihaga yordam</b>Jamoaning yangi dublyajlar tayyorlashiga hissa qo'shasiz.</div>
+</div>
+{status_html}
+<p style="margin-top:26px"><a class="cta-primary" href="https://t.me/{BOT_USERNAME}"><span class="play">▶</span> VIP olish uchun botga yozing</a></p>
+"""
+    return web.Response(
+        text=base_page("VIP", body, active="vip", current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
+
+
+FAQ_ITEMS = [
+    ("Sayt bepulmi?", "Ha, katalog va aksariyat epizodlar bepul. Faqat ba'zi maxsus animelar VIP foydalanuvchilar uchun mo'ljallangan."),
+    ("Videoni saytning o'zida ko'ra olamanmi?", "Ba'zi epizodlar saytda to'g'ridan-to'g'ri ijro etiladi, boshqalari esa Telegram bot orqali avtomatik yuboriladi -- bu holat epizod sahifasida ko'rsatiladi."),
+    ("VIP statusni qanday olsam bo'ladi?", "Telegram botimizga yozing -- u yerdan VIP obuna haqida to'liq ma'lumot va yo'riqnoma olasiz."),
+    ("Saytga qanday kiraman (profil)?", "Botni oching, \"Profil\" bo'limidan \"Saytda profilni ochish\"ni bosing -- sizga bir martalik kirish havolasi yuboriladi."),
+    ("Yangi qismlar qachon qo'shiladi?", "Yangi epizodlar muntazam ravishda tayyor bo'lishi bilan qo'shib boriladi -- eng yangilari bosh sahifada ko'rinadi."),
+]
+
+
+async def faq_page(request):
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
+
+    items_html = "".join(
+        f'<details class="faq-item"><summary>{html.escape(q)}</summary>'
+        f'<p class="faq-a">{html.escape(a)}</p></details>'
+        for q, a in FAQ_ITEMS
+    )
+    body = f"""
+<h2 class="section"><span class="ic">&#10067;</span> Savol-javob</h2>
+<div class="faq-list">{items_html}</div>
+<p style="margin-top:26px">Savolingizga javob topa olmadingizmi? <a href="/aloqa" style="color:var(--violet);font-weight:700">Biz bilan bog'laning</a>.</p>
+"""
+    return web.Response(
+        text=base_page("Savol-javob", body, active="faq", current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
+
+
+async def contact_page(request):
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
+
+    body = f"""
+<h2 class="section"><span class="ic">&#9993;</span> Aloqa</h2>
+<p class="info-block">Savol, taklif yoki shikoyatlaringiz bo'lsa, quyidagi manzillar orqali biz bilan bog'lanishingiz mumkin.</p>
+<div class="contact-list">
+  <a class="contact-row" href="https://t.me/{BOT_USERNAME}">
+    <span class="c-ic">🤖</span>
+    <span class="c-txt"><b>Telegram bot</b><span>@{html.escape(BOT_USERNAME)}</span></span>
+  </a>
+  <a class="contact-row" href="https://t.me/{BOT_USERNAME}?start=support">
+    <span class="c-ic">🛟</span>
+    <span class="c-txt"><b>Yordam so'rash</b><span>Botga yozib, savolingizni bering</span></span>
+  </a>
+</div>
+"""
+    return web.Response(
+        text=base_page("Aloqa", body, active="aloqa", current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
+
+
 def create_app(bot) -> web.Application:
     app = web.Application()
     app["bot"] = bot
@@ -1353,4 +1566,9 @@ def create_app(bot) -> web.Application:
     app.router.add_get("/chiqish", logout)
     app.router.add_get("/profil", profile_page)
     app.router.add_post("/api/profile", api_profile_update)
+    app.router.add_get("/haqimizda", about_page)
+    app.router.add_get("/top", top_page)
+    app.router.add_get("/vip", vip_page)
+    app.router.add_get("/faq", faq_page)
+    app.router.add_get("/aloqa", contact_page)
     return app
