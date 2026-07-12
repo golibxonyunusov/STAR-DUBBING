@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import base64
 
@@ -128,9 +129,12 @@ async def send_web_login_link(message: Message, user_id: int):
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, bot: Bot, command: CommandObject):
-    await db.add_user(message.from_user.id, message.from_user.username or "", message.from_user.full_name)
+    _, subscribed = await asyncio.gather(
+        db.add_user(message.from_user.id, message.from_user.username or "", message.from_user.full_name),
+        check_subscription(bot, message.from_user.id),
+    )
 
-    if not await check_subscription(bot, message.from_user.id):
+    if not subscribed:
         await send_subscribe_prompt(message)
         return
 
@@ -199,11 +203,10 @@ async def show_all_anime(message: Message, bot: Bot):
     if not await check_subscription(bot, message.from_user.id):
         await send_subscribe_prompt(message)
         return
-    total = await db.count_anime()
+    total, rows = await asyncio.gather(db.count_anime(), db.list_anime(offset=0, limit=PAGE_SIZE))
     if total == 0:
         await message.answer("Hozircha animelar qo'shilmagan.")
         return
-    rows = await db.list_anime(offset=0, limit=PAGE_SIZE)
     await send_section_photo(
         message,
         "catalog",
@@ -220,8 +223,7 @@ async def show_all_anime(message: Message, bot: Bot):
 @router.callback_query(F.data.startswith("list_"))
 async def paginate_anime(call: CallbackQuery):
     offset = int(call.data.split("_")[1])
-    total = await db.count_anime()
-    rows = await db.list_anime(offset=offset, limit=PAGE_SIZE)
+    total, rows = await asyncio.gather(db.count_anime(), db.list_anime(offset=offset, limit=PAGE_SIZE))
     try:
         await call.message.edit_caption(
             caption=(
@@ -262,8 +264,7 @@ async def show_genres(message: Message, bot: Bot):
 @router.callback_query(F.data.startswith("genre_"))
 async def show_genre_list(call: CallbackQuery):
     genre = call.data.split("_", 1)[1]
-    total = await db.count_anime(genre=genre)
-    rows = await db.list_anime(offset=0, limit=PAGE_SIZE, genre=genre)
+    total, rows = await asyncio.gather(db.count_anime(genre=genre), db.list_anime(offset=0, limit=PAGE_SIZE, genre=genre))
     if not rows:
         await call.answer("Bu janrda animelar topilmadi.", show_alert=True)
         return
@@ -278,8 +279,7 @@ async def show_genre_list(call: CallbackQuery):
 async def paginate_genre_list(call: CallbackQuery):
     _, genre, offset_str = call.data.split("_", 2)
     offset = int(offset_str)
-    total = await db.count_anime(genre=genre)
-    rows = await db.list_anime(offset=offset, limit=PAGE_SIZE, genre=genre)
+    total, rows = await asyncio.gather(db.count_anime(genre=genre), db.list_anime(offset=offset, limit=PAGE_SIZE, genre=genre))
     try:
         await call.message.edit_text(
             f"🎭 <b>{genre}</b> ({total} ta):",
@@ -345,9 +345,11 @@ async def vip_status(message: Message):
 
 @router.message(F.text == "🧑‍🚀 Profil")
 async def show_profile(message: Message):
-    user = await db.get_user(message.from_user.id)
-    settings = await db.get_user_settings(message.from_user.id)
-    vip = await db.get_vip(message.from_user.id)
+    user, settings, vip = await asyncio.gather(
+        db.get_user(message.from_user.id),
+        db.get_user_settings(message.from_user.id),
+        db.get_vip(message.from_user.id),
+    )
 
     display_name = settings["display_name"] or (user["full_name"] if user else message.from_user.full_name)
     vip_line = "❌ Yo'q"
@@ -391,11 +393,16 @@ async def profile_web_login(call: CallbackQuery):
 
 async def render_anime_card(message: Message, anime_id: int, user_id: int) -> bool:
     """Anime kartasini (poster + ma'lumot + kod) yuboradi. Topilmasa False qaytaradi."""
-    anime = await db.get_anime(anime_id)
+    anime, vip, episodes_count, (avg_rating, votes) = await asyncio.gather(
+        db.get_anime(anime_id),
+        db.is_vip(user_id),
+        db.get_episodes_count(anime_id),
+        db.get_anime_rating(anime_id),
+    )
     if not anime:
         return False
 
-    if anime["vip_only"] and not await db.is_vip(user_id):
+    if anime["vip_only"] and not vip:
         await message.answer(
             f"🔒 <b>{anime['title']}</b>\n\n"
             "Bu anime faqat 👑 <b>VIP</b> foydalanuvchilar uchun ochiq.\n"
@@ -403,8 +410,6 @@ async def render_anime_card(message: Message, anime_id: int, user_id: int) -> bo
         )
         return True
 
-    episodes_count = await db.get_episodes_count(anime_id)
-    avg_rating, votes = await db.get_anime_rating(anime_id)
     rating_line = f"⭐ {avg_rating}/5 ({votes} ovoz)" if votes else "⭐ Hali baho berilmagan"
 
     caption = (
@@ -455,14 +460,13 @@ async def show_episodes(call: CallbackQuery):
     _, anime_id_str, offset_str = call.data.split("_")
     anime_id, offset = int(anime_id_str), int(offset_str)
 
-    all_episodes = await db.get_episodes(anime_id)
+    all_episodes, anime = await asyncio.gather(db.get_episodes(anime_id), db.get_anime(anime_id))
     total = len(all_episodes)
     if total == 0:
         await call.answer("Bu anime uchun hali epizod qo'shilmagan.", show_alert=True)
         return
 
     page_episodes = all_episodes[offset: offset + PAGE_SIZE]
-    anime = await db.get_anime(anime_id)
 
     text = f"🎬 <b>{anime['title']}</b>\nEpizodni tanlang:"
     try:
@@ -477,25 +481,28 @@ async def show_episodes(call: CallbackQuery):
 
 async def deliver_episode(message: Message, anime_id: int, ep_num: int, user_id: int) -> bool:
     """Epizodni yuboradi (Message yoki CallbackQuery.message bo'lishi mumkin)."""
-    anime = await db.get_anime(anime_id)
+    anime, vip, episode, total_eps, prev_ep, next_ep = await asyncio.gather(
+        db.get_anime(anime_id),
+        db.is_vip(user_id),
+        db.get_episode_by_number(anime_id, ep_num),
+        db.get_episodes_count(anime_id),
+        db.get_episode_by_number(anime_id, ep_num - 1),
+        db.get_episode_by_number(anime_id, ep_num + 1),
+    )
     if not anime:
         await message.answer("Anime topilmadi.")
         return False
 
-    if anime["vip_only"] and not await db.is_vip(user_id):
+    if anime["vip_only"] and not vip:
         await message.answer("🔒 Bu anime faqat VIP foydalanuvchilar uchun.")
         return False
 
-    episode = await db.get_episode_by_number(anime_id, ep_num)
     if not episode:
         await message.answer("Bu epizod topilmadi.")
         return False
 
     await db.record_episode_view(user_id, episode["id"], anime_id)
-
-    total_eps = await db.get_episodes_count(anime_id)
-    has_prev = await db.get_episode_by_number(anime_id, ep_num - 1) is not None
-    has_next = await db.get_episode_by_number(anime_id, ep_num + 1) is not None
+    has_prev, has_next = prev_ep is not None, next_ep is not None
 
     await message.answer_video(
         episode["file_id"],
@@ -566,8 +573,7 @@ async def show_top_anime(call: CallbackQuery):
 @router.callback_query(F.data.startswith("topdubs_"))
 async def show_top_dubs(call: CallbackQuery):
     offset = int(call.data.split("_")[1])
-    total = await db.count_dubs()
-    rows = await db.get_top_dubs(PAGE_SIZE, offset)
+    total, rows = await asyncio.gather(db.count_dubs(), db.get_top_dubs(PAGE_SIZE, offset))
     if total == 0:
         text = "🎙 <b>Top dublyajlar</b>\n\nHali hech kim dublyaj yuklamagan. Birinchi bo'ling! 👇"
     else:
@@ -652,11 +658,10 @@ async def dub_submit_video_invalid(message: Message):
 @router.callback_query(F.data.startswith("dubview_"))
 async def dub_view(call: CallbackQuery):
     dub_id = int(call.data.split("_")[1])
-    dub = await db.get_dub(dub_id)
+    dub, (avg, votes) = await asyncio.gather(db.get_dub(dub_id), db.get_dub_rating(dub_id))
     if not dub:
         await call.answer("Topilmadi.", show_alert=True)
         return
-    avg, votes = await db.get_dub_rating(dub_id)
     submitter = await db.get_user(dub["user_id"])
     author = (submitter["full_name"] if submitter else None) or f"ID{dub['user_id']}"
     caption = (
