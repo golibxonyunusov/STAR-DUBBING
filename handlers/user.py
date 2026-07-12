@@ -1,4 +1,5 @@
 import logging
+import base64
 
 from aiogram import Router, F, Bot
 from aiogram.filters import CommandStart, CommandObject
@@ -504,6 +505,81 @@ async def send_episode(call: CallbackQuery, bot: Bot):
     _, anime_id_str, ep_num_str = call.data.split("_")
     await deliver_episode(call.message, int(anime_id_str), int(ep_num_str), call.from_user.id)
     await call.answer()
+
+
+# ---------- AI: RASM VA HUJJATLARGA JAVOB ----------
+
+MAX_AI_FILE_BYTES = 15 * 1024 * 1024  # ~15MB (Gemini inline-fayl limitiga mos)
+
+
+async def _download_as_base64(bot: Bot, file_id: str, file_size: int | None) -> str | None:
+    """Faylni Telegram serveridan yuklab, base64 satrga aylantiradi.
+    Fayl juda katta bo'lsa (yoki yuklashda xatolik bo'lsa) None qaytaradi."""
+    if file_size and file_size > MAX_AI_FILE_BYTES:
+        return None
+    try:
+        file = await bot.get_file(file_id)
+        if file.file_size and file.file_size > MAX_AI_FILE_BYTES:
+            return None
+        buf = await bot.download_file(file.file_path)
+        return base64.b64encode(buf.read()).decode()
+    except Exception:
+        return None
+
+
+@router.message(F.photo)
+async def ai_photo(message: Message, bot: Bot):
+    if not await check_subscription(bot, message.from_user.id):
+        await send_subscribe_prompt(message)
+        return
+
+    await bot.send_chat_action(message.chat.id, "typing")
+    photo = message.photo[-1]
+    data = await _download_as_base64(bot, photo.file_id, photo.file_size)
+    if data is None:
+        await message.answer("⚠️ Rasm hajmi juda katta yoki yuklab bo'lmadi (15MB gacha bo'lishi kerak).")
+        return
+
+    files = [{"kind": "image", "media_type": "image/jpeg", "data": data, "name": "photo.jpg"}]
+    caption = (message.caption or "Bu rasmda nima bor? Tasvirlab ber.").strip()
+    reply = await ai_assistant.ask_gemini(caption, system_prompt=ai_assistant.BOT_SYSTEM_PROMPT, files=files)
+    await message.answer(reply)
+
+
+@router.message(F.document)
+async def ai_document(message: Message, bot: Bot):
+    if not await check_subscription(bot, message.from_user.id):
+        await send_subscribe_prompt(message)
+        return
+
+    doc = message.document
+    mime = doc.mime_type or ""
+    name = doc.file_name or "fayl"
+    await bot.send_chat_action(message.chat.id, "typing")
+
+    if mime == "application/pdf" or name.lower().endswith(".pdf"):
+        data = await _download_as_base64(bot, doc.file_id, doc.file_size)
+        if data is None:
+            await message.answer("⚠️ Fayl hajmi juda katta yoki yuklab bo'lmadi (15MB gacha bo'lishi kerak).")
+            return
+        files = [{"kind": "pdf", "media_type": "application/pdf", "data": data, "name": name}]
+    elif mime.startswith("text/") or name.lower().endswith((".txt", ".md", ".csv", ".json")):
+        if doc.file_size and doc.file_size > MAX_AI_FILE_BYTES:
+            await message.answer("⚠️ Fayl hajmi juda katta.")
+            return
+        try:
+            file = await bot.get_file(doc.file_id)
+            buf = await bot.download_file(file.file_path)
+            text = buf.read().decode("utf-8", errors="ignore")[:20000]
+        except Exception:
+            text = ""
+        files = [{"kind": "text", "text": text, "name": name}]
+    else:
+        files = [{"kind": "other", "media_type": mime or "noma'lum", "size": doc.file_size or 0, "name": name}]
+
+    caption = (message.caption or "Bu faylni tekshirib, qisqacha tushuntirib ber.").strip()
+    reply = await ai_assistant.ask_gemini(caption, system_prompt=ai_assistant.BOT_SYSTEM_PROMPT, files=files)
+    await message.answer(reply)
 
 
 # ---------- MATNLI QIDIRUV (oxirida, boshqa handlerlarga tegmasin) ----------
