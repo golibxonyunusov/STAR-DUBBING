@@ -48,3 +48,8 @@ class LinkEpisode(StatesGroup):
     choose_anime = State()
     episode_number = State()
     web_video_link = State()
+
+
+class SubmitDub(StatesGroup):
+    anime_title = State()
+    video = State()

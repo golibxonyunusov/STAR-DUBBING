@@ -72,6 +72,39 @@ CREATE TABLE IF NOT EXISTS bot_assets (
     key TEXT PRIMARY KEY,
     file_id TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS episode_views (
+    user_id INTEGER NOT NULL,
+    episode_id INTEGER NOT NULL,
+    anime_id INTEGER NOT NULL,
+    viewed_at TEXT,
+    PRIMARY KEY (user_id, episode_id)
+);
+
+CREATE TABLE IF NOT EXISTS anime_ratings (
+    anime_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    rating INTEGER NOT NULL,
+    rated_at TEXT,
+    PRIMARY KEY (anime_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS dub_submissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    anime_title TEXT,
+    file_id TEXT NOT NULL,
+    caption TEXT,
+    submitted_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS dub_ratings (
+    dub_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    rating INTEGER NOT NULL,
+    rated_at TEXT,
+    PRIMARY KEY (dub_id, user_id)
+);
 """
 
 
@@ -560,3 +593,147 @@ async def set_asset_file_id(key: str, file_id: str):
         "ON CONFLICT(key) DO UPDATE SET file_id = excluded.file_id",
         (key, file_id),
     )
+
+
+# ---------- EPIZOD KO'RISHLAR / TOP FOYDALANUVCHILAR ----------
+# Har bir (user_id, episode_id) juftligi faqat bir marta yoziladi -- shuning
+# uchun bir epizodni necha marta qayta ko'rsa ham son bir marta sanaladi.
+
+async def record_episode_view(user_id: int, episode_id: int, anime_id: int):
+    client = get_client()
+    await client.execute(
+        "INSERT OR IGNORE INTO episode_views (user_id, episode_id, anime_id, viewed_at) "
+        "VALUES (?, ?, ?, ?)",
+        (user_id, episode_id, anime_id, datetime.utcnow().isoformat()),
+    )
+
+
+async def has_watched_anime(user_id: int, anime_id: int) -> bool:
+    """Foydalanuvchi shu animening kamida bitta epizodini ko'rganmi -- baho
+    berish huquqini tekshirish uchun ishlatiladi."""
+    client = get_client()
+    rs = await client.execute(
+        "SELECT 1 FROM episode_views WHERE user_id = ? AND anime_id = ? LIMIT 1",
+        (user_id, anime_id),
+    )
+    return bool(rs.rows)
+
+
+async def get_top_users(limit: int = 10):
+    """Nechta (turli) epizod ko'rgani bo'yicha eng faol foydalanuvchilar."""
+    client = get_client()
+    rs = await client.execute(
+        """
+        SELECT u.user_id, u.username, u.full_name, COUNT(*) AS watched
+        FROM episode_views v
+        JOIN users u ON u.user_id = v.user_id
+        GROUP BY v.user_id
+        ORDER BY watched DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    return [dict(zip(rs.columns, row)) for row in rs.rows]
+
+
+# ---------- ANIME REYTINGI ----------
+
+async def rate_anime(anime_id: int, user_id: int, rating: int):
+    """Baho qo'yadi (1-5). Foydalanuvchi avval baho qo'ygan bo'lsa, yangilaydi."""
+    rating = max(1, min(5, int(rating)))
+    client = get_client()
+    await client.execute(
+        "INSERT INTO anime_ratings (anime_id, user_id, rating, rated_at) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(anime_id, user_id) DO UPDATE SET rating = excluded.rating, rated_at = excluded.rated_at",
+        (anime_id, user_id, rating, datetime.utcnow().isoformat()),
+    )
+
+
+async def get_anime_rating(anime_id: int):
+    """(o'rtacha_baho, ovozlar_soni) qaytaradi. Ovoz bo'lmasa (0.0, 0)."""
+    client = get_client()
+    rs = await client.execute(
+        "SELECT AVG(rating), COUNT(*) FROM anime_ratings WHERE anime_id = ?", (anime_id,)
+    )
+    if not rs.rows or rs.rows[0][0] is None:
+        return 0.0, 0
+    return round(rs.rows[0][0], 1), rs.rows[0][1]
+
+
+async def get_top_anime(limit: int = 10):
+    """Eng yuqori o'rtacha bahoga ega animelar (kamida 1 ovoz bo'lganlar)."""
+    client = get_client()
+    rs = await client.execute(
+        """
+        SELECT a.*, AVG(r.rating) AS avg_rating, COUNT(r.rating) AS votes
+        FROM anime a
+        JOIN anime_ratings r ON r.anime_id = a.id
+        GROUP BY a.id
+        ORDER BY avg_rating DESC, votes DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    return [dict(zip(rs.columns, row)) for row in rs.rows]
+
+
+# ---------- FOYDALANUVCHILAR YUKLAGAN DUBLYAJLAR ----------
+
+async def add_dub_submission(user_id: int, anime_title: str, file_id: str, caption: str = "") -> int:
+    client = get_client()
+    rs = await client.execute(
+        "INSERT INTO dub_submissions (user_id, anime_title, file_id, caption, submitted_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (user_id, anime_title, file_id, caption, datetime.utcnow().isoformat()),
+    )
+    return rs.last_insert_rowid
+
+
+async def get_dub(dub_id: int):
+    client = get_client()
+    rs = await client.execute("SELECT * FROM dub_submissions WHERE id = ?", (dub_id,))
+    return rs.rows[0] if rs.rows else None
+
+
+async def count_dubs() -> int:
+    client = get_client()
+    rs = await client.execute("SELECT COUNT(*) FROM dub_submissions")
+    return rs.rows[0][0] if rs.rows else 0
+
+
+async def rate_dub(dub_id: int, user_id: int, rating: int):
+    rating = max(1, min(5, int(rating)))
+    client = get_client()
+    await client.execute(
+        "INSERT INTO dub_ratings (dub_id, user_id, rating, rated_at) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(dub_id, user_id) DO UPDATE SET rating = excluded.rating, rated_at = excluded.rated_at",
+        (dub_id, user_id, rating, datetime.utcnow().isoformat()),
+    )
+
+
+async def get_dub_rating(dub_id: int):
+    client = get_client()
+    rs = await client.execute(
+        "SELECT AVG(rating), COUNT(*) FROM dub_ratings WHERE dub_id = ?", (dub_id,)
+    )
+    if not rs.rows or rs.rows[0][0] is None:
+        return 0.0, 0
+    return round(rs.rows[0][0], 1), rs.rows[0][1]
+
+
+async def get_top_dubs(limit: int = 10, offset: int = 0):
+    """Eng yuqori bahoga ega dublyajlar ro'yxati (sahifalab). Hali ovoz
+    bo'lmagan yangi yuklamalar ham ro'yxatda ko'rinadi (avg_rating=0)."""
+    client = get_client()
+    rs = await client.execute(
+        """
+        SELECT d.*, COALESCE(AVG(r.rating), 0) AS avg_rating, COUNT(r.rating) AS votes
+        FROM dub_submissions d
+        LEFT JOIN dub_ratings r ON r.dub_id = d.id
+        GROUP BY d.id
+        ORDER BY avg_rating DESC, votes DESC, d.submitted_at DESC
+        LIMIT ? OFFSET ?
+        """,
+        (limit, offset),
+    )
+    return [dict(zip(rs.columns, row)) for row in rs.rows]

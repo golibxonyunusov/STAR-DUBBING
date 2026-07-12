@@ -12,7 +12,8 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
     kb = [
         [KeyboardButton(text="🔭 Qidirish"), KeyboardButton(text="🌌 Barcha animelar")],
         [KeyboardButton(text="🪐 Janrlar"), KeyboardButton(text="👑 VIP")],
-        [KeyboardButton(text="🧑\u200d🚀 Profil"), KeyboardButton(text="✨ Bot haqida")],
+        [KeyboardButton(text="🏆 TOP"), KeyboardButton(text="🧑\u200d🚀 Profil")],
+        [KeyboardButton(text="✨ Bot haqida")],
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
@@ -75,8 +76,10 @@ def genres_kb(genres):
 
 # ---------- ANIME CARD ----------
 
-def anime_card_kb(anime_id, episodes_count):
+def anime_card_kb(anime_id, episodes_count, avg_rating=0.0, votes=0):
     rows = [[InlineKeyboardButton(text=f"🎬 Epizodlar ({episodes_count})", callback_data=f"episodes_{anime_id}_0")]]
+    rating_label = f"⭐ Baholash ({avg_rating}/5, {votes} ovoz)" if votes else "⭐ Baho berish"
+    rows.append([InlineKeyboardButton(text=rating_label, callback_data=f"ratemenu_{anime_id}")])
     rows.append([InlineKeyboardButton(text="⬅️ Ortga", callback_data="back_to_list")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -174,3 +177,59 @@ def anime_vip_toggle_kb(anime_id, is_vip_only):
     else:
         btn = InlineKeyboardButton(text="🔒 VIP-only qilish", callback_data=f"vipanime_on_{anime_id}")
     return InlineKeyboardMarkup(inline_keyboard=[[btn]])
+
+
+# ---------- TOP / REYTING / DUBLYAJLAR ----------
+
+def top_menu_kb() -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="👤 Top foydalanuvchilar", callback_data="topusers")],
+        [InlineKeyboardButton(text="🌟 Top animelar", callback_data="topanime")],
+        [InlineKeyboardButton(text="🎙 Top dublyajlar", callback_data="topdubs_0")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def rating_stars_kb(prefix: str, target_id: int) -> InlineKeyboardMarkup:
+    """1 dan 5 gacha yulduz tanlash tugmalari. callback_data: '{prefix}_{target_id}_{n}'."""
+    buttons = [
+        InlineKeyboardButton(text="⭐" * n, callback_data=f"{prefix}_{target_id}_{n}")
+        for n in range(1, 6)
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=[buttons[:3], buttons[3:]])
+
+
+def top_anime_kb(rows) -> InlineKeyboardMarkup:
+    kb_rows = []
+    for a in rows:
+        avg = round(a["avg_rating"], 1) if a["avg_rating"] else 0.0
+        kb_rows.append([InlineKeyboardButton(
+            text=f"⭐{avg} ({a['votes']}) — {a['title']}",
+            callback_data=f"anime_{a['id']}",
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=kb_rows)
+
+
+def top_dubs_kb(rows, offset, total) -> InlineKeyboardMarkup:
+    kb_rows = [[InlineKeyboardButton(text="🎙 Dublyaj yuklash", callback_data="dubsubmit_start")]]
+    for d in rows:
+        avg = round(d["avg_rating"], 1) if d["avg_rating"] else 0.0
+        title = d["anime_title"] or "Noma'lum"
+        kb_rows.append([InlineKeyboardButton(
+            text=f"⭐{avg} ({d['votes']}) — {title}",
+            callback_data=f"dubview_{d['id']}",
+        )])
+    nav = []
+    if offset > 0:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"topdubs_{max(offset - PAGE_SIZE, 0)}"))
+    if offset + PAGE_SIZE < total:
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"topdubs_{offset + PAGE_SIZE}"))
+    if nav:
+        kb_rows.append(nav)
+    return InlineKeyboardMarkup(inline_keyboard=kb_rows)
+
+
+def dub_view_kb(dub_id) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=f"{'⭐' * n} baho berish", callback_data=f"ratedub_{dub_id}_{n}")] for n in range(1, 6)]
+    rows.append([InlineKeyboardButton(text="⬅️ Ro'yxatga qaytish", callback_data="topdubs_0")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)

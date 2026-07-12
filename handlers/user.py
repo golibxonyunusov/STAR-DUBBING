@@ -20,7 +20,7 @@ from config import (
     PROFIL_IMAGE_PATH,
     VIP_IMAGE_PATH,
 )
-from states import EditProfile
+from states import EditProfile, SubmitDub
 from keyboards import (
     main_menu_kb,
     subscribe_kb,
@@ -31,6 +31,11 @@ from keyboards import (
     episode_nav_kb,
     profile_kb,
     web_login_kb,
+    top_menu_kb,
+    rating_stars_kb,
+    top_anime_kb,
+    top_dubs_kb,
+    dub_view_kb,
 )
 
 router = Router()
@@ -399,10 +404,13 @@ async def render_anime_card(message: Message, anime_id: int, user_id: int) -> bo
         return True
 
     episodes_count = await db.get_episodes_count(anime_id)
+    avg_rating, votes = await db.get_anime_rating(anime_id)
+    rating_line = f"⭐ {avg_rating}/5 ({votes} ovoz)" if votes else "⭐ Hali baho berilmagan"
 
     caption = (
         f"{'🔒 ' if anime['vip_only'] else ''}🎬 <b>{anime['title']}</b>\n"
-        f"🆔 Kod: <code>{anime['id']}</code>\n\n"
+        f"🆔 Kod: <code>{anime['id']}</code>\n"
+        f"{rating_line}\n\n"
         f"{anime['description'] or ''}\n\n"
         f"🎭 Janr: {anime['genre'] or '-'}\n"
         f"📅 Yil: {anime['year'] or '-'}\n"
@@ -410,7 +418,7 @@ async def render_anime_card(message: Message, anime_id: int, user_id: int) -> bo
         f"🎞 Epizodlar soni: {episodes_count}"
     )
 
-    kb = anime_card_kb(anime_id, episodes_count)
+    kb = anime_card_kb(anime_id, episodes_count, avg_rating, votes)
 
     if anime["poster_file_id"]:
         await message.answer_photo(anime["poster_file_id"], caption=caption, reply_markup=kb)
@@ -483,6 +491,8 @@ async def deliver_episode(message: Message, anime_id: int, ep_num: int, user_id:
         await message.answer("Bu epizod topilmadi.")
         return False
 
+    await db.record_episode_view(user_id, episode["id"], anime_id)
+
     total_eps = await db.get_episodes_count(anime_id)
     has_prev = await db.get_episode_by_number(anime_id, ep_num - 1) is not None
     has_next = await db.get_episode_by_number(anime_id, ep_num + 1) is not None
@@ -505,6 +515,174 @@ async def send_episode(call: CallbackQuery, bot: Bot):
     _, anime_id_str, ep_num_str = call.data.split("_")
     await deliver_episode(call.message, int(anime_id_str), int(ep_num_str), call.from_user.id)
     await call.answer()
+
+
+# ---------- TOP: FOYDALANUVCHILAR / ANIMELAR / DUBLYAJLAR ----------
+
+@router.message(F.text == "🏆 TOP")
+async def show_top_menu(message: Message, bot: Bot):
+    if not await check_subscription(bot, message.from_user.id):
+        await send_subscribe_prompt(message)
+        return
+    await message.answer(
+        "🏆 <b>TOP bo'limi</b>\n\n"
+        "👤 Eng ko'p epizod ko'rgan foydalanuvchilar\n"
+        "🌟 Eng yuqori baholangan animelar\n"
+        "🎙 Foydalanuvchilar yuklagan eng yaxshi dublyajlar\n\n"
+        "Kerakli bo'limni tanlang 👇",
+        reply_markup=top_menu_kb(),
+    )
+
+
+@router.callback_query(F.data == "topusers")
+async def show_top_users(call: CallbackQuery):
+    rows = await db.get_top_users(10)
+    if not rows:
+        await call.answer("Hozircha hech kim epizod ko'rmagan.", show_alert=True)
+        return
+    medals = ["🥇", "🥈", "🥉"]
+    lines = ["👤 <b>Top foydalanuvchilar</b> (ko'rgan epizodlar soni bo'yicha):\n"]
+    for i, r in enumerate(rows):
+        medal = medals[i] if i < 3 else f"{i + 1}."
+        name = r["full_name"] or (f"@{r['username']}" if r["username"] else f"ID{r['user_id']}")
+        lines.append(f"{medal} {name} — <b>{r['watched']}</b> epizod")
+    await call.message.answer("\n".join(lines))
+    await call.answer()
+
+
+@router.callback_query(F.data == "topanime")
+async def show_top_anime(call: CallbackQuery):
+    rows = await db.get_top_anime(10)
+    if not rows:
+        await call.answer("Hozircha hech qanday animega baho berilmagan.", show_alert=True)
+        return
+    await call.message.answer(
+        "🌟 <b>Top animelar</b> (o'rtacha baho bo'yicha):",
+        reply_markup=top_anime_kb(rows),
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("topdubs_"))
+async def show_top_dubs(call: CallbackQuery):
+    offset = int(call.data.split("_")[1])
+    total = await db.count_dubs()
+    rows = await db.get_top_dubs(PAGE_SIZE, offset)
+    if total == 0:
+        text = "🎙 <b>Top dublyajlar</b>\n\nHali hech kim dublyaj yuklamagan. Birinchi bo'ling! 👇"
+    else:
+        text = "🎙 <b>Top dublyajlar</b>\n\nFoydalanuvchilar yuklagan dublyajlar, eng yuqori baholanganlari tepada:"
+    try:
+        await call.message.edit_text(text, reply_markup=top_dubs_kb(rows, offset, total))
+    except TelegramBadRequest:
+        await call.message.answer(text, reply_markup=top_dubs_kb(rows, offset, total))
+    await call.answer()
+
+
+# ---------- ANIME BAHOLASH ----------
+
+@router.callback_query(F.data.startswith("ratemenu_"))
+async def rate_anime_menu(call: CallbackQuery):
+    anime_id = int(call.data.split("_")[1])
+    if not await db.has_watched_anime(call.from_user.id, anime_id):
+        await call.answer(
+            "⚠️ Baho berish uchun avval shu animening kamida bitta epizodini tomosha qiling.",
+            show_alert=True,
+        )
+        return
+    await call.message.answer("⭐ Nechta yulduz berasiz?", reply_markup=rating_stars_kb("rateanime", anime_id))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("rateanime_"))
+async def rate_anime_save(call: CallbackQuery):
+    _, anime_id_str, stars_str = call.data.split("_")
+    anime_id, stars = int(anime_id_str), int(stars_str)
+    if not await db.has_watched_anime(call.from_user.id, anime_id):
+        await call.answer("⚠️ Avval shu animeni tomosha qiling.", show_alert=True)
+        return
+    await db.rate_anime(anime_id, call.from_user.id, stars)
+    await call.answer(f"✅ Rahmat! Siz {stars} ⭐ baho berdingiz.", show_alert=True)
+
+
+# ---------- DUBLYAJ YUKLASH VA BAHOLASH ----------
+
+@router.callback_query(F.data == "dubsubmit_start")
+async def dub_submit_start(call: CallbackQuery, state: FSMContext):
+    await state.set_state(SubmitDub.anime_title)
+    await call.message.answer(
+        "🎙 <b>Dublyaj yuklash</b>\n\n"
+        "Avval qaysi anime/epizod uchun dublyaj ekanini yozing "
+        "(masalan: <i>Naruto 5-qism</i>):"
+    )
+    await call.answer()
+
+
+@router.message(SubmitDub.anime_title)
+async def dub_submit_title(message: Message, state: FSMContext):
+    title = message.text.strip()[:150] if message.text else ""
+    if not title:
+        await message.answer("Iltimos, matn ko'rinishida nom yozing.")
+        return
+    await state.update_data(anime_title=title)
+    await state.set_state(SubmitDub.video)
+    await message.answer("🎥 Endi dublyaj videosini yuboring:")
+
+
+@router.message(SubmitDub.video, F.video)
+async def dub_submit_video(message: Message, state: FSMContext):
+    data = await state.get_data()
+    title = data.get("anime_title", "Noma'lum")
+    dub_id = await db.add_dub_submission(
+        message.from_user.id, title, message.video.file_id, message.caption or "",
+    )
+    await state.clear()
+    await message.answer(
+        f"✅ Dublyajingiz (\"{title}\") yuklandi va darhol 🏆 Top dublyajlar ro'yxatida ko'rinadi!\n"
+        f"🆔 ID: <code>{dub_id}</code>",
+        reply_markup=main_menu_kb(),
+    )
+
+
+@router.message(SubmitDub.video)
+async def dub_submit_video_invalid(message: Message):
+    await message.answer("⚠️ Iltimos, video fayl ko'rinishida yuboring.")
+
+
+@router.callback_query(F.data.startswith("dubview_"))
+async def dub_view(call: CallbackQuery):
+    dub_id = int(call.data.split("_")[1])
+    dub = await db.get_dub(dub_id)
+    if not dub:
+        await call.answer("Topilmadi.", show_alert=True)
+        return
+    avg, votes = await db.get_dub_rating(dub_id)
+    submitter = await db.get_user(dub["user_id"])
+    author = (submitter["full_name"] if submitter else None) or f"ID{dub['user_id']}"
+    caption = (
+        f"🎙 <b>{dub['anime_title']}</b>\n"
+        f"👤 Muallif: {author}\n"
+        f"⭐ {avg}/5 ({votes} ovoz)\n"
+    )
+    if dub["caption"]:
+        caption += f"\n💬 {dub['caption']}"
+    await call.message.answer_video(dub["file_id"], caption=caption, reply_markup=dub_view_kb(dub_id))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("ratedub_"))
+async def rate_dub_save(call: CallbackQuery):
+    _, dub_id_str, stars_str = call.data.split("_")
+    dub_id, stars = int(dub_id_str), int(stars_str)
+    dub = await db.get_dub(dub_id)
+    if not dub:
+        await call.answer("Topilmadi.", show_alert=True)
+        return
+    if dub["user_id"] == call.from_user.id:
+        await call.answer("⚠️ O'z dublyajingizga baho bera olmaysiz.", show_alert=True)
+        return
+    await db.rate_dub(dub_id, call.from_user.id, stars)
+    await call.answer(f"✅ Rahmat! Siz {stars} ⭐ baho berdingiz.", show_alert=True)
 
 
 # ---------- AI: RASM VA HUJJATLARGA JAVOB ----------
