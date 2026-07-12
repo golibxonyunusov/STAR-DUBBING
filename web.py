@@ -26,23 +26,10 @@ import aiohttp
 from aiohttp import web
 
 import database as db
-from config import GEMINI_API_KEY, ASSISTANT_MODEL, BOT_USERNAME, PAGE_SIZE
+import ai_assistant
+from config import BOT_USERNAME, PAGE_SIZE
 
 ACCENT = "#9b8cff"
-
-# Google Gemini API (BEPUL tarif) -- model nomi URL ichiga qo'yiladi.
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-ASSISTANT_SYSTEM_PROMPT = (
-    "Sen STAR DUBBING anime dublyaj saytining sayt-ichi AI yordamchisisan. "
-    "Foydalanuvchilarga sayt bo'yicha (animelarni topish, janrlar, TOP reyting, "
-    "VIP, Telegram bot orqali tomosha qilish) yordam berasan, shuningdek umumiy "
-    "savollarga ham javob berasan. Foydalanuvchi qanday tilda yozsa (o'zbek, rus, "
-    "ingliz va h.k.), o'sha tilda javob ber -- aks holda o'zbek tilida javob ber. "
-    "Javoblaring qisqa, aniq va do'stona bo'lsin. Foydalanuvchi rasm yoki hujjat "
-    "(PDF/matn) biriktirsa, uni ko'rib tahlil qila olasan. Video yoki audio fayl "
-    "biriktirilsa, uni bevosita ko'ra/eshita olmasligingni ochiq ayt, lekin fayl "
-    "nomi/tavsifi asosida yordam berishga harakat qil."
-)
 
 SESSION_COOKIE = "sid"
 THEME_COOKIE = "theme"
@@ -1807,42 +1794,11 @@ async def api_profile_update(request):
 
 
 def _build_assistant_content(message: str, files: list) -> list:
-    """Foydalanuvchi xabari va biriktirilgan fayllardan Gemini API uchun
-    "parts" ro'yxatini yasaydi (rasm/PDF -- inline_data, matn -- text)."""
-    parts = []
-    if message:
-        parts.append({"text": message})
-    for f in files or []:
-        if not isinstance(f, dict):
-            continue
-        name = str(f.get("name", "fayl"))[:200]
-        kind = f.get("kind")
-        media_type = f.get("media_type") or "application/octet-stream"
-        if kind == "image" and f.get("data"):
-            parts.append({"inline_data": {"mime_type": media_type, "data": f["data"]}})
-        elif kind == "pdf" and f.get("data"):
-            parts.append({"inline_data": {"mime_type": "application/pdf", "data": f["data"]}})
-        elif kind == "text" and f.get("text"):
-            parts.append({"text": f"[Biriktirilgan fayl: {name}]\n{f['text']}"})
-        else:
-            size_kb = round((f.get("size") or 0) / 1024)
-            parts.append({
-                "text": f"[Foydalanuvchi fayl biriktirdi: {name} ({media_type}, ~{size_kb}KB) -- "
-                        f"bu turdagi faylning ichini ko'ra/eshita olmaysan, faqat nomi va "
-                        f"kontekstga qarab javob ber.]",
-            })
-    if not parts:
-        parts.append({"text": "(bo'sh xabar)"})
-    return parts
+    """Eskirgan nom bilan mos kelish uchun qoldirilgan -- ai_assistant._build_parts'ga o'tkazadi."""
+    return ai_assistant._build_parts(message, files)
 
 
 async def api_assistant(request):
-    if not GEMINI_API_KEY:
-        return web.json_response(
-            {"reply": "AI yordamchi hali sozlanmagan (server tomonida GEMINI_API_KEY yo'q). "
-                      "Bepul kalitni https://aistudio.google.com/apikey saytidan olsa bo'ladi."},
-            status=200,
-        )
     try:
         data = await request.json()
     except Exception:
@@ -1857,54 +1813,12 @@ async def api_assistant(request):
     if not isinstance(raw_history, list):
         raw_history = []
 
-    # Gemini'da rollar "user" va "model" bo'ladi (Anthropic'dagi "assistant" emas).
-    contents = []
-    for item in raw_history[-12:]:
-        if not isinstance(item, dict):
-            continue
-        role = "user" if item.get("role") == "user" else "model"
-        text = str(item.get("text", ""))[:4000]
-        if text:
-            contents.append({"role": role, "parts": [{"text": text}]})
-    contents.append({"role": "user", "parts": _build_assistant_content(message, files)})
-
-    payload = {
-        "system_instruction": {"parts": [{"text": ASSISTANT_SYSTEM_PROMPT}]},
-        "contents": contents,
-        "generationConfig": {"maxOutputTokens": 1024},
-    }
-    headers = {
-        "x-goog-api-key": GEMINI_API_KEY,
-        "content-type": "application/json",
-    }
-    url = GEMINI_API_URL.format(model=ASSISTANT_MODEL)
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, headers=headers,
-                                     timeout=aiohttp.ClientTimeout(total=45)) as resp:
-                result = await resp.json()
-                if resp.status != 200:
-                    err_msg = (result.get("error") or {}).get("message", "Noma'lum xatolik")
-                    return web.json_response({"reply": f"⚠️ AI xatosi: {err_msg}"}, status=200)
-    except Exception:
-        return web.json_response(
-            {"reply": "⚠️ AI yordamchiga ulanib bo'lmadi, birozdan so'ng qayta urinib ko'ring."},
-            status=200,
-        )
-
-    candidates = result.get("candidates") or []
-    reply = "..."
-    if candidates:
-        finish_reason = candidates[0].get("finishReason")
-        cand_parts = (candidates[0].get("content") or {}).get("parts") or []
-        reply_parts = [p.get("text", "") for p in cand_parts if isinstance(p, dict) and p.get("text")]
-        reply = "\n".join(p for p in reply_parts if p).strip() or "..."
-        if finish_reason == "SAFETY":
-            reply = "⚠️ Bu so'rovga javob berib bo'lmadi (xavfsizlik cheklovi)."
-    else:
-        blocked = (result.get("promptFeedback") or {}).get("blockReason")
-        if blocked:
-            reply = "⚠️ Bu so'rovga javob berib bo'lmadi (xavfsizlik cheklovi)."
+    reply = await ai_assistant.ask_gemini(
+        message,
+        system_prompt=ai_assistant.SITE_SYSTEM_PROMPT,
+        history=raw_history,
+        files=files,
+    )
     return web.json_response({"reply": reply})
 
 

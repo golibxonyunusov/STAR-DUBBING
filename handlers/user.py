@@ -7,6 +7,7 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.exceptions import TelegramBadRequest
 
 import database as db
+import ai_assistant
 from config import (
     PAGE_SIZE,
     REQUIRED_CHANNELS,
@@ -530,7 +531,11 @@ async def text_search(message: Message, bot: Bot):
 
     results = await db.search_anime(query)
     if not results:
-        await message.answer("😔 Hech narsa topilmadi. Boshqa nom yoki anime kodi bilan urinib ko'ring.")
+        # Anime bazasida topilmadi -- bu erkin savol/xabar bo'lishi mumkin,
+        # shuning uchun AI yordamchiga yuboramiz.
+        await bot.send_chat_action(message.chat.id, "typing")
+        reply = await ai_assistant.ask_gemini(query, system_prompt=ai_assistant.BOT_SYSTEM_PROMPT)
+        await message.answer(reply)
         return
 
     total = len(results)
