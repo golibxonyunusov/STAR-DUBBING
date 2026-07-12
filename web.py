@@ -18,15 +18,30 @@ uslubidagi bo'lim ajratgichlari va gradientli STAR/DUBBING wordmark.
 """
 
 import html
+import json
 import random
 from urllib.parse import quote
 
+import aiohttp
 from aiohttp import web
 
 import database as db
-from config import BOT_USERNAME, PAGE_SIZE
+from config import ANTHROPIC_API_KEY, ASSISTANT_MODEL, BOT_USERNAME, PAGE_SIZE
 
 ACCENT = "#9b8cff"
+
+ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+ASSISTANT_SYSTEM_PROMPT = (
+    "Sen STAR DUBBING anime dublyaj saytining sayt-ichi AI yordamchisisan. "
+    "Foydalanuvchilarga sayt bo'yicha (animelarni topish, janrlar, TOP reyting, "
+    "VIP, Telegram bot orqali tomosha qilish) yordam berasan, shuningdek umumiy "
+    "savollarga ham javob berasan. Foydalanuvchi qanday tilda yozsa (o'zbek, rus, "
+    "ingliz va h.k.), o'sha tilda javob ber -- aks holda o'zbek tilida javob ber. "
+    "Javoblaring qisqa, aniq va do'stona bo'lsin. Foydalanuvchi rasm yoki hujjat "
+    "(PDF/matn) biriktirsa, uni ko'rib tahlil qila olasan. Video yoki audio fayl "
+    "biriktirilsa, uni bevosita ko'ra/eshita olmasligingni ochiq ayt, lekin fayl "
+    "nomi/tavsifi asosida yordam berishga harakat qil."
+)
 
 SESSION_COOKIE = "sid"
 THEME_COOKIE = "theme"
@@ -108,6 +123,37 @@ STYLES = """
   }
   html[data-theme="light"] .badge-vip { background: #ffffffd0; }
   html[data-theme="light"] .live-results { background: #ffffff; }
+  /* Oq matnga tayangan gradient yozuvlar kunduzgi fonda deyarli
+     ko'rinmay qolgani uchun -- shu yerda alohida qayta belgilanadi. */
+  html[data-theme="light"] header {
+    background: rgba(255,255,255,0.82);
+  }
+  html[data-theme="light"] .wordmark,
+  html[data-theme="light"] .detail .meta h1 {
+    background: linear-gradient(160deg, var(--violet-deep) 0%, var(--violet) 55%, var(--blue) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 4px 26px #6c5ce733);
+  }
+  html[data-theme="light"] .logo .grad-txt {
+    background: linear-gradient(135deg, var(--violet-deep) 10%, var(--violet) 55%, var(--blue) 90%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  html[data-theme="light"] .logo .star-ic {
+    background: linear-gradient(135deg, var(--violet-deep), var(--blue) 70%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 6px #6c5ce740);
+  }
+  html[data-theme="light"] .shooting-star { background: linear-gradient(90deg, var(--violet), transparent); }
+  html[data-theme="light"] .shooting-star,
+  html[data-theme="light"] .star-dot { filter: none; }
+  html[data-theme="light"] .card .poster-wrap,
+  html[data-theme="light"] .detail .poster-big-wrap { background: var(--panel-hi); }
+  html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #d3cdef; }
+  html[data-theme="light"] .cta-primary .play { background: #ffffff40; }
+  html[data-theme="light"] .lock-notice {
+    background: repeating-linear-gradient(135deg, #fdeef2 0 10px, #fbe4ea 10px 20px);
+    border-color: #ff5d7a66; color: #b23a55;
+  }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   @media (prefers-reduced-motion: reduce) {
@@ -296,7 +342,7 @@ STYLES = """
   }
   .wordmark span { display: block; }
   .tagline {
-    max-width: 560px; margin: 0 auto; color: #c9c6dc; font-size: 15.5px;
+    max-width: 560px; margin: 0 auto; color: var(--muted); font-size: 15.5px;
   }
   .hero-ctas {
     display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
@@ -479,7 +525,7 @@ STYLES = """
     font-family: 'IBM Plex Mono', monospace;
   }
   .detail .meta p.desc {
-    color: #c9c6dc; max-width: 640px; font-size: 15px;
+    color: var(--muted); max-width: 640px; font-size: 15px;
     border-left: 2px solid var(--violet); padding-left: 16px;
   }
   .episodes {
@@ -576,7 +622,7 @@ STYLES = """
 
   /* ---- statik sahifalar (Biz haqimizda va h.k.) ---- */
   .static-page { max-width: 720px; margin: 10px auto 0; }
-  .static-page p { color: #c9c6dc; font-size: 14.5px; margin: 0 0 16px; }
+  .static-page p { color: var(--muted); font-size: 14.5px; margin: 0 0 16px; }
   .static-page p.lead { font-size: 16px; color: var(--ink); }
   .feature-list {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -657,7 +703,123 @@ STYLES = """
     .detail { gap: 22px; }
     .detail .poster-big-wrap { width: 170px; }
     .stats-row { gap: 26px; }
+    .ai-panel { width: calc(100vw - 24px); height: min(70vh, 560px); right: 12px; bottom: 82px; }
+    .ai-launcher { right: 16px; bottom: 16px; }
   }
+
+  /* ---- AI yordamchi (pastki burchakdagi doimiy chat oynasi) ---- */
+  .ai-launcher {
+    position: fixed; right: 26px; bottom: 26px; z-index: 100;
+    width: 58px; height: 58px; border-radius: 50%; border: none; cursor: pointer;
+    background: linear-gradient(135deg, var(--violet-deep), var(--blue));
+    box-shadow: 0 12px 30px -8px #6c5ce780, 0 0 0 1px #ffffff22 inset;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; color: #fff; transition: transform .2s, box-shadow .2s;
+  }
+  .ai-launcher:hover { transform: translateY(-2px) scale(1.04); box-shadow: 0 16px 36px -6px #6c5ce7a0; }
+  .ai-launcher .ping {
+    position: absolute; top: -3px; right: -3px; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--ok); border: 2px solid var(--bg-a); display: none;
+  }
+  .ai-launcher.has-unread .ping { display: block; }
+  body.ai-open .ai-launcher .ic-open { display: none; }
+  .ai-launcher .ic-close { display: none; }
+  body.ai-open .ai-launcher .ic-close { display: block; }
+
+  .ai-panel {
+    position: fixed; right: 26px; bottom: 98px; z-index: 100;
+    width: 380px; height: min(74vh, 620px);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    box-shadow: 0 30px 70px -20px #000000a0, 0 0 0 1px var(--line-soft);
+    display: none; flex-direction: column; overflow: hidden;
+  }
+  body.ai-open .ai-panel { display: flex; }
+  .ai-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+    background: linear-gradient(135deg, #6c5ce71a, #5aa7ff14);
+    flex-shrink: 0;
+  }
+  .ai-head .ai-title { display: flex; align-items: center; gap: 10px; }
+  .ai-head .ai-avatar {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--violet-deep), var(--blue));
+    display: flex; align-items: center; justify-content: center; font-size: 15px; color: #fff;
+  }
+  .ai-head .ai-name { font-weight: 700; font-size: 13.5px; color: var(--ink); }
+  .ai-head .ai-sub { font-size: 11px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .ai-head .ai-sub .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); margin-right: 5px; }
+  .ai-close-btn {
+    width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line);
+    background: var(--panel-hi); color: var(--muted); cursor: pointer; font-size: 13px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    transition: all .15s;
+  }
+  .ai-close-btn:hover { color: var(--ink); border-color: var(--violet); }
+
+  .ai-body {
+    flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;
+    position: relative;
+  }
+  .ai-msg { max-width: 88%; font-size: 13.3px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .ai-msg.user { align-self: flex-end; background: linear-gradient(135deg, var(--violet-deep), var(--blue)); color: #fff; padding: 10px 13px; border-radius: 12px 12px 3px 12px; }
+  .ai-msg.bot { align-self: flex-start; background: var(--panel-hi); color: var(--ink); padding: 10px 13px; border-radius: 12px 12px 12px 3px; border: 1px solid var(--line-soft); }
+  .ai-msg.bot.typing { display: flex; gap: 4px; align-items: center; padding: 13px; }
+  .ai-msg .dot-anim { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: aiDot 1.1s infinite ease-in-out; }
+  .ai-msg .dot-anim:nth-child(2) { animation-delay: .15s; }
+  .ai-msg .dot-anim:nth-child(3) { animation-delay: .3s; }
+  @keyframes aiDot { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+  .ai-msg-file {
+    display: flex; align-items: center; gap: 7px; font-size: 11.5px;
+    background: #ffffff20; border-radius: 8px; padding: 5px 9px; margin-top: 6px;
+  }
+  .ai-msg.bot .ai-msg-file { background: var(--panel); border: 1px solid var(--line-soft); }
+  .ai-empty-hint { text-align: center; color: var(--muted); font-size: 12.5px; margin: auto; padding: 20px; }
+  .ai-empty-hint .ai-avatar { margin: 0 auto 12px; width: 44px; height: 44px; font-size: 20px; }
+
+  .ai-drop-overlay {
+    position: absolute; inset: 0; z-index: 5; display: none;
+    align-items: center; justify-content: center; text-align: center;
+    background: #6c5ce71a; backdrop-filter: blur(2px);
+    border: 2px dashed var(--violet); border-radius: 10px; margin: 8px;
+    font-size: 12.5px; color: var(--violet); font-weight: 700;
+  }
+  .ai-body.drag-over .ai-drop-overlay { display: flex; }
+
+  .ai-files-preview { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 12px; }
+  .ai-file-chip {
+    display: flex; align-items: center; gap: 6px; font-size: 11px;
+    background: var(--panel-hi); border: 1px solid var(--line); border-radius: 20px;
+    padding: 4px 6px 4px 10px; color: var(--ink);
+  }
+  .ai-file-chip button {
+    border: none; background: var(--line); color: var(--ink); border-radius: 50%;
+    width: 16px; height: 16px; font-size: 10px; cursor: pointer; line-height: 1;
+  }
+
+  .ai-foot { padding: 10px 12px 12px; border-top: 1px solid var(--line); flex-shrink: 0; }
+  .ai-input-row { display: flex; align-items: flex-end; gap: 8px; }
+  .ai-attach-btn {
+    width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line);
+    background: var(--panel-hi); color: var(--muted); cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .15s;
+  }
+  .ai-attach-btn:hover { color: var(--violet); border-color: var(--violet); }
+  .ai-input-row textarea {
+    flex: 1; resize: none; max-height: 100px; min-height: 36px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+    padding: 9px 12px; color: var(--ink); font-size: 13px; font-family: inherit;
+    outline: none; transition: border-color .15s;
+  }
+  .ai-input-row textarea:focus { border-color: var(--violet); }
+  .ai-send-btn {
+    width: 36px; height: 36px; border-radius: 50%; border: none; cursor: pointer;
+    background: linear-gradient(135deg, var(--violet-deep), var(--blue)); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;
+    transition: opacity .15s; flex-shrink: 0;
+  }
+  .ai-send-btn:disabled { opacity: .4; cursor: default; }
+  .ai-hint { font-size: 10px; color: var(--muted); margin-top: 6px; text-align: center; }
 """
 
 
@@ -766,6 +928,208 @@ SCRIPTS = """
         }
       });
     }
+
+    // ---- AI yordamchi widget (barcha sahifalarda saqlanib qoladi) ----
+    var aiLauncher = document.getElementById('ai-launcher');
+    var aiPanel = document.getElementById('ai-panel');
+    var aiBody = document.getElementById('ai-body');
+    var aiForm = document.getElementById('ai-form');
+    var aiInput = document.getElementById('ai-textarea');
+    var aiSend = document.getElementById('ai-send');
+    var aiClose = document.getElementById('ai-close');
+    var aiAttachBtn = document.getElementById('ai-attach-btn');
+    var aiFileInput = document.getElementById('ai-file-input');
+    var aiFilesPreview = document.getElementById('ai-files-preview');
+
+    if (aiLauncher && aiPanel) {
+      var LS_OPEN = 'aiWidgetOpen';
+      var LS_HISTORY = 'aiWidgetHistory';
+      var MAX_FILE_BYTES = 12 * 1024 * 1024; // 12MB
+      var pendingFiles = []; // { name, media_type, size, kind, data(base64|null) }
+      var history = [];
+      try { history = JSON.parse(localStorage.getItem(LS_HISTORY) || '[]'); } catch (e) { history = []; }
+
+      function setOpen(open) {
+        document.body.classList.toggle('ai-open', open);
+        localStorage.setItem(LS_OPEN, open ? '1' : '0');
+        if (open) { aiLauncher.classList.remove('has-unread'); setTimeout(function () { aiInput.focus(); }, 150); }
+      }
+      aiLauncher.addEventListener('click', function () {
+        setOpen(!document.body.classList.contains('ai-open'));
+      });
+      aiClose.addEventListener('click', function () { setOpen(false); });
+      if (localStorage.getItem(LS_OPEN) === '1') setOpen(true);
+
+      function fileIcon(kind) {
+        if (kind === 'image') return '\\ud83d\\uddbc\\ufe0f';
+        if (kind === 'pdf') return '\\ud83d\\udcc4';
+        if (kind === 'text') return '\\ud83d\\udcc3';
+        if (kind === 'audio') return '\\ud83c\\udfb5';
+        if (kind === 'video') return '\\ud83c\\udfac';
+        return '\\ud83d\\udcce';
+      }
+
+      function renderMsg(role, text, files) {
+        var wrap = document.createElement('div');
+        wrap.className = 'ai-msg ' + (role === 'user' ? 'user' : 'bot');
+        var t = document.createElement('div');
+        t.textContent = text || '';
+        wrap.appendChild(t);
+        (files || []).forEach(function (f) {
+          var chip = document.createElement('div');
+          chip.className = 'ai-msg-file';
+          chip.textContent = fileIcon(f.kind) + ' ' + f.name;
+          wrap.appendChild(chip);
+        });
+        var hint = aiBody.querySelector('.ai-empty-hint');
+        if (hint) hint.remove();
+        aiBody.appendChild(wrap);
+        aiBody.scrollTop = aiBody.scrollHeight;
+        return wrap;
+      }
+
+      function persist() {
+        try { localStorage.setItem(LS_HISTORY, JSON.stringify(history.slice(-30))); } catch (e) {}
+      }
+
+      // sahifa ochilganda avvalgi suhbatni tiklash
+      history.forEach(function (m) { renderMsg(m.role, m.text, m.files); });
+
+      function addFileChip(f, idx) {
+        var chip = document.createElement('div');
+        chip.className = 'ai-file-chip';
+        chip.innerHTML = '<span>' + fileIcon(f.kind) + ' ' + f.name.slice(0, 22) + '</span>';
+        var rm = document.createElement('button');
+        rm.type = 'button'; rm.textContent = '\\u2715';
+        rm.addEventListener('click', function () {
+          pendingFiles.splice(idx, 1);
+          renderFilesPreview();
+        });
+        chip.appendChild(rm);
+        aiFilesPreview.appendChild(chip);
+      }
+      function renderFilesPreview() {
+        aiFilesPreview.innerHTML = '';
+        pendingFiles.forEach(function (f, i) { addFileChip(f, i); });
+      }
+
+      function classifyFile(file) {
+        var type = file.type || '';
+        if (type.indexOf('image/') === 0) return 'image';
+        if (type === 'application/pdf') return 'pdf';
+        if (type.indexOf('audio/') === 0) return 'audio';
+        if (type.indexOf('video/') === 0) return 'video';
+        if (type.indexOf('text/') === 0 || /\\.(txt|md|csv|json|py|js|html|css|log)$/i.test(file.name)) return 'text';
+        return 'other';
+      }
+
+      function readAsBase64(file) {
+        return new Promise(function (resolve, reject) {
+          var r = new FileReader();
+          r.onload = function () { resolve(r.result.split(',')[1] || ''); };
+          r.onerror = reject;
+          r.readAsDataURL(file);
+        });
+      }
+      function readAsText(file) {
+        return new Promise(function (resolve, reject) {
+          var r = new FileReader();
+          r.onload = function () { resolve(r.result); };
+          r.onerror = reject;
+          r.readAsText(file);
+        });
+      }
+
+      function handleFiles(fileList) {
+        Array.prototype.slice.call(fileList).forEach(function (file) {
+          if (file.size > MAX_FILE_BYTES) {
+            renderMsg('bot', '\\u26a0\\ufe0f "' + file.name + '" juda katta (12MB dan kichik fayl yuboring).');
+            return;
+          }
+          var kind = classifyFile(file);
+          var entry = { name: file.name, media_type: file.type || 'application/octet-stream', size: file.size, kind: kind, data: null, text: null };
+          pendingFiles.push(entry);
+          var idx = pendingFiles.length - 1;
+          renderFilesPreview();
+          if (kind === 'image' || kind === 'pdf') {
+            readAsBase64(file).then(function (b64) { pendingFiles[idx].data = b64; });
+          } else if (kind === 'text') {
+            readAsText(file).then(function (txt) { pendingFiles[idx].text = txt.slice(0, 20000); });
+          }
+          // audio/video/other -- faqat metama'lumot yuboriladi (kontent emas)
+        });
+      }
+
+      if (aiAttachBtn && aiFileInput) {
+        aiAttachBtn.addEventListener('click', function () { aiFileInput.click(); });
+        aiFileInput.addEventListener('change', function () {
+          handleFiles(aiFileInput.files);
+          aiFileInput.value = '';
+        });
+      }
+      ['dragover', 'dragenter'].forEach(function (ev) {
+        aiBody.addEventListener(ev, function (e) { e.preventDefault(); aiBody.classList.add('drag-over'); });
+      });
+      ['dragleave', 'drop'].forEach(function (ev) {
+        aiBody.addEventListener(ev, function (e) {
+          if (ev === 'drop') { e.preventDefault(); handleFiles(e.dataTransfer.files); }
+          aiBody.classList.remove('drag-over');
+        });
+      });
+
+      function autoGrow() {
+        aiInput.style.height = 'auto';
+        aiInput.style.height = Math.min(aiInput.scrollHeight, 100) + 'px';
+      }
+      aiInput.addEventListener('input', autoGrow);
+      aiInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); aiForm.requestSubmit(); }
+      });
+
+      aiForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var text = aiInput.value.trim();
+        if (!text && pendingFiles.length === 0) return;
+
+        var filesForDisplay = pendingFiles.map(function (f) { return { name: f.name, kind: f.kind }; });
+        renderMsg('user', text, filesForDisplay);
+        var outgoingFiles = pendingFiles.slice();
+        history.push({ role: 'user', text: text, files: filesForDisplay });
+        persist();
+
+        aiInput.value = ''; autoGrow();
+        pendingFiles = []; renderFilesPreview();
+        aiSend.disabled = true;
+
+        var typing = document.createElement('div');
+        typing.className = 'ai-msg bot typing';
+        typing.innerHTML = '<span class="dot-anim"></span><span class="dot-anim"></span><span class="dot-anim"></span>';
+        aiBody.appendChild(typing);
+        aiBody.scrollTop = aiBody.scrollHeight;
+
+        fetch('/api/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            history: history.slice(0, -1).slice(-12),
+            files: outgoingFiles.map(function (f) {
+              return { name: f.name, media_type: f.media_type, size: f.size, kind: f.kind, data: f.data, text: f.text };
+            })
+          })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+          typing.remove();
+          var reply = data.reply || '\\u26a0\\ufe0f Xatolik yuz berdi, birozdan so\\'ng qayta urinib ko\\'ring.';
+          renderMsg('bot', reply, []);
+          history.push({ role: 'assistant', text: reply, files: [] });
+          persist();
+          if (!document.body.classList.contains('ai-open')) aiLauncher.classList.add('has-unread');
+        }).catch(function () {
+          typing.remove();
+          renderMsg('bot', '\\u26a0\\ufe0f Ulanishda xatolik. Internetni tekshirib qayta urinib ko\\'ring.', []);
+        }).finally(function () { aiSend.disabled = false; });
+      });
+    }
   })();
 """
 
@@ -842,6 +1206,40 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None,
     <a href="/aloqa">Aloqa</a>
   </div>
 </footer>
+<button id="ai-launcher" class="ai-launcher" type="button" title="AI yordamchi">
+  <span class="ping"></span>
+  <span class="ic-open">✦</span>
+  <span class="ic-close">✕</span>
+</button>
+<div id="ai-panel" class="ai-panel">
+  <div class="ai-head">
+    <div class="ai-title">
+      <div class="ai-avatar">✦</div>
+      <div>
+        <div class="ai-name">STAR AI yordamchi</div>
+        <div class="ai-sub"><span class="dot"></span>onlayn</div>
+      </div>
+    </div>
+    <button id="ai-close" class="ai-close-btn" type="button" title="Yopish">✕</button>
+  </div>
+  <div id="ai-body" class="ai-body">
+    <div class="ai-drop-overlay">📎 Faylni shu yerga tashlang</div>
+    <div class="ai-empty-hint">
+      <div class="ai-avatar">✦</div>
+      Salom! Men STAR AI yordamchiman.<br>Savol bering yoki rasm/hujjat/video/audio biriktiring.
+    </div>
+  </div>
+  <div id="ai-files-preview" class="ai-files-preview"></div>
+  <form id="ai-form" class="ai-foot">
+    <div class="ai-input-row">
+      <button id="ai-attach-btn" class="ai-attach-btn" type="button" title="Fayl biriktirish">📎</button>
+      <textarea id="ai-textarea" rows="1" placeholder="Xabar yozing..."></textarea>
+      <button id="ai-send" class="ai-send-btn" type="submit" title="Yuborish">➤</button>
+    </div>
+    <input id="ai-file-input" type="file" multiple hidden accept="image/*,application/pdf,audio/*,video/*,text/*,.txt,.md,.csv,.json">
+    <div class="ai-hint">Rasm, PDF va matnli fayllarni to'liq o'qiy oladi · video/audio faqat nom bo'yicha</div>
+  </form>
+</div>
 <script>{SCRIPTS}</script>
 </body>
 </html>"""
@@ -1407,6 +1805,103 @@ async def api_profile_update(request):
     return web.json_response({"ok": True})
 
 
+def _build_assistant_content(message: str, files: list) -> list:
+    """Foydalanuvchi xabari va biriktirilgan fayllardan Anthropic API uchun
+    content bloklarini yasaydi."""
+    content = []
+    if message:
+        content.append({"type": "text", "text": message})
+    for f in files or []:
+        if not isinstance(f, dict):
+            continue
+        name = str(f.get("name", "fayl"))[:200]
+        kind = f.get("kind")
+        media_type = f.get("media_type") or "application/octet-stream"
+        if kind == "image" and f.get("data"):
+            content.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": media_type, "data": f["data"]},
+            })
+        elif kind == "pdf" and f.get("data"):
+            content.append({
+                "type": "document",
+                "source": {"type": "base64", "media_type": "application/pdf", "data": f["data"]},
+            })
+        elif kind == "text" and f.get("text"):
+            content.append({"type": "text", "text": f"[Biriktirilgan fayl: {name}]\n{f['text']}"})
+        else:
+            size_kb = round((f.get("size") or 0) / 1024)
+            content.append({
+                "type": "text",
+                "text": f"[Foydalanuvchi fayl biriktirdi: {name} ({media_type}, ~{size_kb}KB) -- "
+                        f"bu turdagi faylning ichini ko'ra/eshita olmaysan, faqat nomi va "
+                        f"kontekstga qarab javob ber.]",
+            })
+    if not content:
+        content.append({"type": "text", "text": "(bo'sh xabar)"})
+    return content
+
+
+async def api_assistant(request):
+    if not ANTHROPIC_API_KEY:
+        return web.json_response(
+            {"reply": "AI yordamchi hali sozlanmagan (server tomonida ANTHROPIC_API_KEY yo'q)."},
+            status=200,
+        )
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"reply": "Noto'g'ri so'rov."}, status=400)
+
+    message = str(data.get("message", ""))[:8000]
+    files = data.get("files") or []
+    if not isinstance(files, list):
+        files = []
+    files = files[:5]
+    raw_history = data.get("history") or []
+    if not isinstance(raw_history, list):
+        raw_history = []
+
+    messages = []
+    for item in raw_history[-12:]:
+        if not isinstance(item, dict):
+            continue
+        role = "user" if item.get("role") == "user" else "assistant"
+        text = str(item.get("text", ""))[:4000]
+        if text:
+            messages.append({"role": role, "content": text})
+    messages.append({"role": "user", "content": _build_assistant_content(message, files)})
+
+    payload = {
+        "model": ASSISTANT_MODEL,
+        "max_tokens": 1024,
+        "system": ASSISTANT_SYSTEM_PROMPT,
+        "messages": messages,
+    }
+    headers = {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(ANTHROPIC_API_URL, json=payload, headers=headers,
+                                     timeout=aiohttp.ClientTimeout(total=45)) as resp:
+                result = await resp.json()
+                if resp.status != 200:
+                    err_msg = (result.get("error") or {}).get("message", "Noma'lum xatolik")
+                    return web.json_response({"reply": f"⚠️ AI xatosi: {err_msg}"}, status=200)
+    except Exception:
+        return web.json_response(
+            {"reply": "⚠️ AI yordamchiga ulanib bo'lmadi, birozdan so'ng qayta urinib ko'ring."},
+            status=200,
+        )
+
+    reply_parts = [b.get("text", "") for b in result.get("content", []) if b.get("type") == "text"]
+    reply = "\n".join(p for p in reply_parts if p).strip() or "..."
+    return web.json_response({"reply": reply})
+
+
 async def top_page(request):
     """TOP reyting -- eng ko'p ko'rilgan (anime_detail sahifasi ochilgan
     sonlari bo'yicha) animelar ro'yxati."""
@@ -1581,7 +2076,7 @@ async def ping(request):
 
 
 def create_app(bot) -> web.Application:
-    app = web.Application()
+    app = web.Application(client_max_size=20 * 1024 * 1024)  # AI widget fayl yuklashlari uchun
     app["bot"] = bot
     app.router.add_get("/", home)
     app.router.add_get("/ping", ping)
@@ -1602,4 +2097,5 @@ def create_app(bot) -> web.Application:
     app.router.add_get("/chiqish", logout)
     app.router.add_get("/profil", profile_page)
     app.router.add_post("/api/profile", api_profile_update)
+    app.router.add_post("/api/assistant", api_assistant)
     return app
