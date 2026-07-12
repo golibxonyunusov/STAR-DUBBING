@@ -19,12 +19,12 @@ STORAGE_CHANNEL_ID = os.getenv("STORAGE_CHANNEL_ID", "")
 DB_PATH = os.getenv("DB_PATH", "anisinus.db")
 
 # --- SAYTDAGI AI YORDAMCHI (pastki burchakdagi chat oynasi) ---
-# Google Gemini -- BEPUL API. Kalitni https://aistudio.google.com/apikey
-# sahifasidan bir necha soniyada, karta raqamisiz olish mumkin.
-# Render'da "Environment" bo'limiga GEMINI_API_KEY nomi bilan qo'shing.
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Bepul tarifga kiradigan, rasm va Google qidiruvni (grounding) qo'llab-quvvatlaydigan model.
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+# https://console.anthropic.com dan API kalit oling va Render'da
+# "Environment" bo'limiga ANTHROPIC_API_KEY nomi bilan qo'shing.
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+# Tezroq/arzonroq javoblar uchun "claude-haiku-4-5-20251001" ga
+# almashtirish mumkin.
+ASSISTANT_MODEL = os.getenv("ASSISTANT_MODEL", "claude-sonnet-5")
 
 # --- TURSO (bulutdagi doimiy baza) ---
 # Bot Render'da qayta ishga tushganda (uxlab qolish, qayta deploy, crash)
