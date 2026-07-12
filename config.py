@@ -26,9 +26,11 @@ DB_PATH = os.getenv("DB_PATH", "anisinus.db")
 #   3) Render'da loyihangizga "Environment" bo'limidan
 #      GEMINI_API_KEY nomi bilan shu kalitni qo'shing.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Bepul tarifda mavjud modellar: "gemini-2.5-flash" (muvozanatli),
-# "gemini-2.5-flash-lite" (eng ko'p bepul so'rov limiti).
-ASSISTANT_MODEL = os.getenv("ASSISTANT_MODEL", "gemini-2.5-flash")
+# "gemini-flash-latest" -- eng so'nggi barqaror Flash modeliga avtomatik
+# ishora qiladi (Google buni o'zi vaqti-vaqti bilan yangilab turadi, shu
+# sababli "model eskirdi" xatosiga kam duch kelinadi). Agar kerak bo'lsa
+# aniq versiyaga ham o'zgartirish mumkin (masalan "gemini-3.5-flash").
+ASSISTANT_MODEL = os.getenv("ASSISTANT_MODEL", "gemini-flash-latest")
 
 # --- TURSO (bulutdagi doimiy baza) ---
 # Bot Render'da qayta ishga tushganda (uxlab qolish, qayta deploy, crash)
