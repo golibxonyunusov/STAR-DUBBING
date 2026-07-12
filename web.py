@@ -26,11 +26,12 @@ import aiohttp
 from aiohttp import web
 
 import database as db
-from config import ANTHROPIC_API_KEY, ASSISTANT_MODEL, BOT_USERNAME, PAGE_SIZE
+from config import GEMINI_API_KEY, ASSISTANT_MODEL, BOT_USERNAME, PAGE_SIZE
 
 ACCENT = "#9b8cff"
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+# Google Gemini API (BEPUL tarif) -- model nomi URL ichiga qo'yiladi.
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 ASSISTANT_SYSTEM_PROMPT = (
     "Sen STAR DUBBING anime dublyaj saytining sayt-ichi AI yordamchisisan. "
     "Foydalanuvchilarga sayt bo'yicha (animelarni topish, janrlar, TOP reyting, "
@@ -1806,11 +1807,11 @@ async def api_profile_update(request):
 
 
 def _build_assistant_content(message: str, files: list) -> list:
-    """Foydalanuvchi xabari va biriktirilgan fayllardan Anthropic API uchun
-    content bloklarini yasaydi."""
-    content = []
+    """Foydalanuvchi xabari va biriktirilgan fayllardan Gemini API uchun
+    "parts" ro'yxatini yasaydi (rasm/PDF -- inline_data, matn -- text)."""
+    parts = []
     if message:
-        content.append({"type": "text", "text": message})
+        parts.append({"text": message})
     for f in files or []:
         if not isinstance(f, dict):
             continue
@@ -1818,34 +1819,28 @@ def _build_assistant_content(message: str, files: list) -> list:
         kind = f.get("kind")
         media_type = f.get("media_type") or "application/octet-stream"
         if kind == "image" and f.get("data"):
-            content.append({
-                "type": "image",
-                "source": {"type": "base64", "media_type": media_type, "data": f["data"]},
-            })
+            parts.append({"inline_data": {"mime_type": media_type, "data": f["data"]}})
         elif kind == "pdf" and f.get("data"):
-            content.append({
-                "type": "document",
-                "source": {"type": "base64", "media_type": "application/pdf", "data": f["data"]},
-            })
+            parts.append({"inline_data": {"mime_type": "application/pdf", "data": f["data"]}})
         elif kind == "text" and f.get("text"):
-            content.append({"type": "text", "text": f"[Biriktirilgan fayl: {name}]\n{f['text']}"})
+            parts.append({"text": f"[Biriktirilgan fayl: {name}]\n{f['text']}"})
         else:
             size_kb = round((f.get("size") or 0) / 1024)
-            content.append({
-                "type": "text",
+            parts.append({
                 "text": f"[Foydalanuvchi fayl biriktirdi: {name} ({media_type}, ~{size_kb}KB) -- "
                         f"bu turdagi faylning ichini ko'ra/eshita olmaysan, faqat nomi va "
                         f"kontekstga qarab javob ber.]",
             })
-    if not content:
-        content.append({"type": "text", "text": "(bo'sh xabar)"})
-    return content
+    if not parts:
+        parts.append({"text": "(bo'sh xabar)"})
+    return parts
 
 
 async def api_assistant(request):
-    if not ANTHROPIC_API_KEY:
+    if not GEMINI_API_KEY:
         return web.json_response(
-            {"reply": "AI yordamchi hali sozlanmagan (server tomonida ANTHROPIC_API_KEY yo'q)."},
+            {"reply": "AI yordamchi hali sozlanmagan (server tomonida GEMINI_API_KEY yo'q). "
+                      "Bepul kalitni https://aistudio.google.com/apikey saytidan olsa bo'ladi."},
             status=200,
         )
     try:
@@ -1862,30 +1857,30 @@ async def api_assistant(request):
     if not isinstance(raw_history, list):
         raw_history = []
 
-    messages = []
+    # Gemini'da rollar "user" va "model" bo'ladi (Anthropic'dagi "assistant" emas).
+    contents = []
     for item in raw_history[-12:]:
         if not isinstance(item, dict):
             continue
-        role = "user" if item.get("role") == "user" else "assistant"
+        role = "user" if item.get("role") == "user" else "model"
         text = str(item.get("text", ""))[:4000]
         if text:
-            messages.append({"role": role, "content": text})
-    messages.append({"role": "user", "content": _build_assistant_content(message, files)})
+            contents.append({"role": role, "parts": [{"text": text}]})
+    contents.append({"role": "user", "parts": _build_assistant_content(message, files)})
 
     payload = {
-        "model": ASSISTANT_MODEL,
-        "max_tokens": 1024,
-        "system": ASSISTANT_SYSTEM_PROMPT,
-        "messages": messages,
+        "system_instruction": {"parts": [{"text": ASSISTANT_SYSTEM_PROMPT}]},
+        "contents": contents,
+        "generationConfig": {"maxOutputTokens": 1024},
     }
     headers = {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        "x-goog-api-key": GEMINI_API_KEY,
         "content-type": "application/json",
     }
+    url = GEMINI_API_URL.format(model=ASSISTANT_MODEL)
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(ANTHROPIC_API_URL, json=payload, headers=headers,
+            async with session.post(url, json=payload, headers=headers,
                                      timeout=aiohttp.ClientTimeout(total=45)) as resp:
                 result = await resp.json()
                 if resp.status != 200:
@@ -1897,8 +1892,19 @@ async def api_assistant(request):
             status=200,
         )
 
-    reply_parts = [b.get("text", "") for b in result.get("content", []) if b.get("type") == "text"]
-    reply = "\n".join(p for p in reply_parts if p).strip() or "..."
+    candidates = result.get("candidates") or []
+    reply = "..."
+    if candidates:
+        finish_reason = candidates[0].get("finishReason")
+        cand_parts = (candidates[0].get("content") or {}).get("parts") or []
+        reply_parts = [p.get("text", "") for p in cand_parts if isinstance(p, dict) and p.get("text")]
+        reply = "\n".join(p for p in reply_parts if p).strip() or "..."
+        if finish_reason == "SAFETY":
+            reply = "⚠️ Bu so'rovga javob berib bo'lmadi (xavfsizlik cheklovi)."
+    else:
+        blocked = (result.get("promptFeedback") or {}).get("blockReason")
+        if blocked:
+            reply = "⚠️ Bu so'rovga javob berib bo'lmadi (xavfsizlik cheklovi)."
     return web.json_response({"reply": reply})
 
 
