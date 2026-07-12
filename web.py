@@ -26,21 +26,29 @@ import aiohttp
 from aiohttp import web
 
 import database as db
-from config import ANTHROPIC_API_KEY, ASSISTANT_MODEL, BOT_USERNAME, PAGE_SIZE
+from config import BOT_USERNAME, GEMINI_API_KEY, GEMINI_MODEL, PAGE_SIZE
 
 ACCENT = "#9b8cff"
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 ASSISTANT_SYSTEM_PROMPT = (
     "Sen STAR DUBBING anime dublyaj saytining sayt-ichi AI yordamchisisan. "
     "Foydalanuvchilarga sayt bo'yicha (animelarni topish, janrlar, TOP reyting, "
     "VIP, Telegram bot orqali tomosha qilish) yordam berasan, shuningdek umumiy "
-    "savollarga ham javob berasan. Foydalanuvchi qanday tilda yozsa (o'zbek, rus, "
+    "savollarga ham javob berasan. Kerak bo'lsa Google qidiruvidan joriy "
+    "ma'lumot olib javob ber. Foydalanuvchi qanday tilda yozsa (o'zbek, rus, "
     "ingliz va h.k.), o'sha tilda javob ber -- aks holda o'zbek tilida javob ber. "
-    "Javoblaring qisqa, aniq va do'stona bo'lsin. Foydalanuvchi rasm yoki hujjat "
-    "(PDF/matn) biriktirsa, uni ko'rib tahlil qila olasan. Video yoki audio fayl "
-    "biriktirilsa, uni bevosita ko'ra/eshita olmasligingni ochiq ayt, lekin fayl "
-    "nomi/tavsifi asosida yordam berishga harakat qil."
+    "Javoblaring qisqa, aniq va do'stona bo'lsin."
+)
+VISION_SYSTEM_PROMPT = (
+    "Sen rasm va hujjatlarni tahlil qiluvchi AI yordamchisan. Berilgan rasm/skrinshot "
+    "mazmunini aniq va batafsil, o'zbek tilida (agar foydalanuvchi boshqa tilda "
+    "so'ramasa) tushuntirib ber."
+)
+DATA_SYSTEM_PROMPT = (
+    "Sen ma'lumotlarni (CSV) tahlil qilib, tendensiya va bashorat beruvchi AI "
+    "yordamchisan. Javobingda aniq raqamlar, qisqa xulosa va agar mumkin bo'lsa "
+    "keyingi davr uchun bashorat keltir. O'zbek tilida javob ber."
 )
 
 SESSION_COOKIE = "sid"
@@ -707,7 +715,7 @@ STYLES = """
     .ai-launcher { right: 16px; bottom: 16px; }
   }
 
-  /* ---- AI yordamchi (pastki burchakdagi doimiy chat oynasi) ---- */
+  /* ---- AI yordamchi (pastki burchakdagi doimiy oyna, 3 bo'lim) ---- */
   .ai-launcher {
     position: fixed; right: 26px; bottom: 26px; z-index: 100;
     width: 58px; height: 58px; border-radius: 50%; border: none; cursor: pointer;
@@ -728,7 +736,7 @@ STYLES = """
 
   .ai-panel {
     position: fixed; right: 26px; bottom: 98px; z-index: 100;
-    width: 380px; height: min(74vh, 620px);
+    width: 400px; height: min(78vh, 660px);
     background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
     box-shadow: 0 30px 70px -20px #000000a0, 0 0 0 1px var(--line-soft);
     display: none; flex-direction: column; overflow: hidden;
@@ -757,6 +765,24 @@ STYLES = """
   }
   .ai-close-btn:hover { color: var(--ink); border-color: var(--violet); }
 
+  /* ---- bo'lim (tab) tugmalari ---- */
+  .ai-tabs {
+    display: flex; gap: 3px; padding: 8px 10px; background: var(--panel-hi);
+    border-bottom: 1px solid var(--line); flex-shrink: 0;
+  }
+  .ai-tab {
+    flex: 1; text-align: center; padding: 8px 4px; border-radius: 8px; cursor: pointer;
+    font-size: 11px; font-weight: 700; color: var(--muted); transition: all .15s;
+    font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.2px; border: 1px solid transparent;
+    text-transform: uppercase;
+  }
+  .ai-tab.active { background: linear-gradient(135deg, var(--violet-deep), var(--blue)); color: #fff; }
+  .ai-tab:not(.active):hover { color: var(--ink); border-color: var(--line); }
+
+  .ai-section { flex: 1; display: none; flex-direction: column; min-height: 0; }
+  .ai-section.active { display: flex; }
+
+  /* ---- Suhbat bo'limi ---- */
   .ai-body {
     flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;
     position: relative;
@@ -769,42 +795,11 @@ STYLES = """
   .ai-msg .dot-anim:nth-child(2) { animation-delay: .15s; }
   .ai-msg .dot-anim:nth-child(3) { animation-delay: .3s; }
   @keyframes aiDot { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
-  .ai-msg-file {
-    display: flex; align-items: center; gap: 7px; font-size: 11.5px;
-    background: #ffffff20; border-radius: 8px; padding: 5px 9px; margin-top: 6px;
-  }
-  .ai-msg.bot .ai-msg-file { background: var(--panel); border: 1px solid var(--line-soft); }
   .ai-empty-hint { text-align: center; color: var(--muted); font-size: 12.5px; margin: auto; padding: 20px; }
   .ai-empty-hint .ai-avatar { margin: 0 auto 12px; width: 44px; height: 44px; font-size: 20px; }
 
-  .ai-drop-overlay {
-    position: absolute; inset: 0; z-index: 5; display: none;
-    align-items: center; justify-content: center; text-align: center;
-    background: #6c5ce71a; backdrop-filter: blur(2px);
-    border: 2px dashed var(--violet); border-radius: 10px; margin: 8px;
-    font-size: 12.5px; color: var(--violet); font-weight: 700;
-  }
-  .ai-body.drag-over .ai-drop-overlay { display: flex; }
-
-  .ai-files-preview { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 12px; }
-  .ai-file-chip {
-    display: flex; align-items: center; gap: 6px; font-size: 11px;
-    background: var(--panel-hi); border: 1px solid var(--line); border-radius: 20px;
-    padding: 4px 6px 4px 10px; color: var(--ink);
-  }
-  .ai-file-chip button {
-    border: none; background: var(--line); color: var(--ink); border-radius: 50%;
-    width: 16px; height: 16px; font-size: 10px; cursor: pointer; line-height: 1;
-  }
-
   .ai-foot { padding: 10px 12px 12px; border-top: 1px solid var(--line); flex-shrink: 0; }
   .ai-input-row { display: flex; align-items: flex-end; gap: 8px; }
-  .ai-attach-btn {
-    width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line);
-    background: var(--panel-hi); color: var(--muted); cursor: pointer; font-size: 15px;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .15s;
-  }
-  .ai-attach-btn:hover { color: var(--violet); border-color: var(--violet); }
   .ai-input-row textarea {
     flex: 1; resize: none; max-height: 100px; min-height: 36px;
     background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
@@ -816,10 +811,45 @@ STYLES = """
     width: 36px; height: 36px; border-radius: 50%; border: none; cursor: pointer;
     background: linear-gradient(135deg, var(--violet-deep), var(--blue)); color: #fff;
     display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;
-    transition: opacity .15s; flex-shrink: 0;
+    transition: opacity .15s;
   }
   .ai-send-btn:disabled { opacity: .4; cursor: default; }
   .ai-hint { font-size: 10px; color: var(--muted); margin-top: 6px; text-align: center; }
+
+  /* ---- Hujjat/rasm va Ma'lumot bo'limlari (bir martalik tahlil) ---- */
+  .ai-tool-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; }
+  .ai-tool-sub { font-size: 11.5px; color: var(--muted); margin-bottom: 12px; line-height: 1.5; }
+  .ai-dropzone {
+    border: 1.5px dashed var(--line); border-radius: 10px; padding: 22px 14px; text-align: center;
+    cursor: pointer; margin-bottom: 12px; color: var(--muted); font-size: 12px; transition: all .15s;
+  }
+  .ai-dropzone:hover, .ai-dropzone.drag-over { border-color: var(--violet); color: var(--violet); background: #6c5ce70d; }
+  .ai-preview-img { max-width: 100%; max-height: 160px; border-radius: 8px; margin-bottom: 12px; display: none; object-fit: contain; }
+  .ai-tool-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .ai-tool-row input[type=text] {
+    flex: 1; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 11px; color: var(--ink); font-size: 12.5px; font-family: inherit; outline: none;
+  }
+  .ai-tool-row input[type=text]:focus { border-color: var(--violet); }
+  .ai-tool-btn {
+    background: linear-gradient(135deg, var(--violet-deep), var(--blue)); color: #fff; border: none;
+    border-radius: 8px; padding: 0 16px; font-weight: 700; cursor: pointer; font-size: 12px; flex-shrink: 0;
+  }
+  .ai-tool-btn:disabled { opacity: .4; cursor: default; }
+  .ai-csv-table { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-bottom: 12px; font-family: 'IBM Plex Mono', monospace; }
+  .ai-csv-table th, .ai-csv-table td { border: 1px solid var(--line); padding: 4px 6px; text-align: left; }
+  .ai-csv-table th { color: var(--violet); background: var(--panel-hi); }
+  .ai-csv-note { font-size: 10px; color: var(--muted); margin: -6px 0 12px; }
+  .ai-result {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    padding: 13px; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; color: var(--ink);
+    min-height: 40px; flex: 1;
+  }
+  .ai-tool-loader {
+    display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line);
+    border-top-color: var(--violet); border-radius: 50%; animation: aiSpin .7s linear infinite; margin-right: 6px;
+  }
+  @keyframes aiSpin { to { transform: rotate(360deg); } }
 """
 
 
@@ -932,150 +962,57 @@ SCRIPTS = """
     // ---- AI yordamchi widget (barcha sahifalarda saqlanib qoladi) ----
     var aiLauncher = document.getElementById('ai-launcher');
     var aiPanel = document.getElementById('ai-panel');
-    var aiBody = document.getElementById('ai-body');
-    var aiForm = document.getElementById('ai-form');
-    var aiInput = document.getElementById('ai-textarea');
-    var aiSend = document.getElementById('ai-send');
-    var aiClose = document.getElementById('ai-close');
-    var aiAttachBtn = document.getElementById('ai-attach-btn');
-    var aiFileInput = document.getElementById('ai-file-input');
-    var aiFilesPreview = document.getElementById('ai-files-preview');
 
     if (aiLauncher && aiPanel) {
       var LS_OPEN = 'aiWidgetOpen';
       var LS_HISTORY = 'aiWidgetHistory';
-      var MAX_FILE_BYTES = 12 * 1024 * 1024; // 12MB
-      var pendingFiles = []; // { name, media_type, size, kind, data(base64|null) }
-      var history = [];
-      try { history = JSON.parse(localStorage.getItem(LS_HISTORY) || '[]'); } catch (e) { history = []; }
+      var LS_TAB = 'aiWidgetTab';
 
       function setOpen(open) {
         document.body.classList.toggle('ai-open', open);
         localStorage.setItem(LS_OPEN, open ? '1' : '0');
-        if (open) { aiLauncher.classList.remove('has-unread'); setTimeout(function () { aiInput.focus(); }, 150); }
+        if (open) { aiLauncher.classList.remove('has-unread'); }
       }
       aiLauncher.addEventListener('click', function () {
         setOpen(!document.body.classList.contains('ai-open'));
       });
-      aiClose.addEventListener('click', function () { setOpen(false); });
+      document.getElementById('ai-close').addEventListener('click', function () { setOpen(false); });
       if (localStorage.getItem(LS_OPEN) === '1') setOpen(true);
 
-      function fileIcon(kind) {
-        if (kind === 'image') return '\\ud83d\\uddbc\\ufe0f';
-        if (kind === 'pdf') return '\\ud83d\\udcc4';
-        if (kind === 'text') return '\\ud83d\\udcc3';
-        if (kind === 'audio') return '\\ud83c\\udfb5';
-        if (kind === 'video') return '\\ud83c\\udfac';
-        return '\\ud83d\\udcce';
+      // ---- bo'limlar (tabs) ----
+      var tabs = document.querySelectorAll('.ai-tab');
+      function activateTab(name) {
+        tabs.forEach(function (t) { t.classList.toggle('active', t.dataset.tab === name); });
+        document.querySelectorAll('.ai-section').forEach(function (s) {
+          s.classList.toggle('active', s.id === 'ai-tab-' + name);
+        });
+        localStorage.setItem(LS_TAB, name);
       }
+      tabs.forEach(function (t) { t.addEventListener('click', function () { activateTab(t.dataset.tab); }); });
+      activateTab(localStorage.getItem(LS_TAB) || 'chat');
 
-      function renderMsg(role, text, files) {
+      // ================= SUHBAT =================
+      var aiBody = document.getElementById('ai-body');
+      var aiForm = document.getElementById('ai-form');
+      var aiInput = document.getElementById('ai-textarea');
+      var aiSend = document.getElementById('ai-send');
+      var history = [];
+      try { history = JSON.parse(localStorage.getItem(LS_HISTORY) || '[]'); } catch (e) { history = []; }
+
+      function renderMsg(role, text) {
         var wrap = document.createElement('div');
         wrap.className = 'ai-msg ' + (role === 'user' ? 'user' : 'bot');
-        var t = document.createElement('div');
-        t.textContent = text || '';
-        wrap.appendChild(t);
-        (files || []).forEach(function (f) {
-          var chip = document.createElement('div');
-          chip.className = 'ai-msg-file';
-          chip.textContent = fileIcon(f.kind) + ' ' + f.name;
-          wrap.appendChild(chip);
-        });
+        wrap.textContent = text || '';
         var hint = aiBody.querySelector('.ai-empty-hint');
         if (hint) hint.remove();
         aiBody.appendChild(wrap);
         aiBody.scrollTop = aiBody.scrollHeight;
         return wrap;
       }
-
       function persist() {
         try { localStorage.setItem(LS_HISTORY, JSON.stringify(history.slice(-30))); } catch (e) {}
       }
-
-      // sahifa ochilganda avvalgi suhbatni tiklash
-      history.forEach(function (m) { renderMsg(m.role, m.text, m.files); });
-
-      function addFileChip(f, idx) {
-        var chip = document.createElement('div');
-        chip.className = 'ai-file-chip';
-        chip.innerHTML = '<span>' + fileIcon(f.kind) + ' ' + f.name.slice(0, 22) + '</span>';
-        var rm = document.createElement('button');
-        rm.type = 'button'; rm.textContent = '\\u2715';
-        rm.addEventListener('click', function () {
-          pendingFiles.splice(idx, 1);
-          renderFilesPreview();
-        });
-        chip.appendChild(rm);
-        aiFilesPreview.appendChild(chip);
-      }
-      function renderFilesPreview() {
-        aiFilesPreview.innerHTML = '';
-        pendingFiles.forEach(function (f, i) { addFileChip(f, i); });
-      }
-
-      function classifyFile(file) {
-        var type = file.type || '';
-        if (type.indexOf('image/') === 0) return 'image';
-        if (type === 'application/pdf') return 'pdf';
-        if (type.indexOf('audio/') === 0) return 'audio';
-        if (type.indexOf('video/') === 0) return 'video';
-        if (type.indexOf('text/') === 0 || /\\.(txt|md|csv|json|py|js|html|css|log)$/i.test(file.name)) return 'text';
-        return 'other';
-      }
-
-      function readAsBase64(file) {
-        return new Promise(function (resolve, reject) {
-          var r = new FileReader();
-          r.onload = function () { resolve(r.result.split(',')[1] || ''); };
-          r.onerror = reject;
-          r.readAsDataURL(file);
-        });
-      }
-      function readAsText(file) {
-        return new Promise(function (resolve, reject) {
-          var r = new FileReader();
-          r.onload = function () { resolve(r.result); };
-          r.onerror = reject;
-          r.readAsText(file);
-        });
-      }
-
-      function handleFiles(fileList) {
-        Array.prototype.slice.call(fileList).forEach(function (file) {
-          if (file.size > MAX_FILE_BYTES) {
-            renderMsg('bot', '\\u26a0\\ufe0f "' + file.name + '" juda katta (12MB dan kichik fayl yuboring).');
-            return;
-          }
-          var kind = classifyFile(file);
-          var entry = { name: file.name, media_type: file.type || 'application/octet-stream', size: file.size, kind: kind, data: null, text: null };
-          pendingFiles.push(entry);
-          var idx = pendingFiles.length - 1;
-          renderFilesPreview();
-          if (kind === 'image' || kind === 'pdf') {
-            readAsBase64(file).then(function (b64) { pendingFiles[idx].data = b64; });
-          } else if (kind === 'text') {
-            readAsText(file).then(function (txt) { pendingFiles[idx].text = txt.slice(0, 20000); });
-          }
-          // audio/video/other -- faqat metama'lumot yuboriladi (kontent emas)
-        });
-      }
-
-      if (aiAttachBtn && aiFileInput) {
-        aiAttachBtn.addEventListener('click', function () { aiFileInput.click(); });
-        aiFileInput.addEventListener('change', function () {
-          handleFiles(aiFileInput.files);
-          aiFileInput.value = '';
-        });
-      }
-      ['dragover', 'dragenter'].forEach(function (ev) {
-        aiBody.addEventListener(ev, function (e) { e.preventDefault(); aiBody.classList.add('drag-over'); });
-      });
-      ['dragleave', 'drop'].forEach(function (ev) {
-        aiBody.addEventListener(ev, function (e) {
-          if (ev === 'drop') { e.preventDefault(); handleFiles(e.dataTransfer.files); }
-          aiBody.classList.remove('drag-over');
-        });
-      });
+      history.forEach(function (m) { renderMsg(m.role, m.text); });
 
       function autoGrow() {
         aiInput.style.height = 'auto';
@@ -1089,16 +1026,11 @@ SCRIPTS = """
       aiForm.addEventListener('submit', function (e) {
         e.preventDefault();
         var text = aiInput.value.trim();
-        if (!text && pendingFiles.length === 0) return;
-
-        var filesForDisplay = pendingFiles.map(function (f) { return { name: f.name, kind: f.kind }; });
-        renderMsg('user', text, filesForDisplay);
-        var outgoingFiles = pendingFiles.slice();
-        history.push({ role: 'user', text: text, files: filesForDisplay });
+        if (!text) return;
+        renderMsg('user', text);
+        history.push({ role: 'user', text: text });
         persist();
-
         aiInput.value = ''; autoGrow();
-        pendingFiles = []; renderFilesPreview();
         aiSend.disabled = true;
 
         var typing = document.createElement('div');
@@ -1110,24 +1042,123 @@ SCRIPTS = """
         fetch('/api/assistant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: text,
-            history: history.slice(0, -1).slice(-12),
-            files: outgoingFiles.map(function (f) {
-              return { name: f.name, media_type: f.media_type, size: f.size, kind: f.kind, data: f.data, text: f.text };
-            })
-          })
+          body: JSON.stringify({ mode: 'chat', message: text, history: history.slice(0, -1).slice(-12) })
         }).then(function (r) { return r.json(); }).then(function (data) {
           typing.remove();
-          var reply = data.reply || '\\u26a0\\ufe0f Xatolik yuz berdi, birozdan so\\'ng qayta urinib ko\\'ring.';
-          renderMsg('bot', reply, []);
-          history.push({ role: 'assistant', text: reply, files: [] });
+          var reply = data.reply || "\u26a0\ufe0f Xatolik yuz berdi, birozdan so'ng qayta urinib ko'ring.";
+          renderMsg('bot', reply);
+          history.push({ role: 'assistant', text: reply });
           persist();
           if (!document.body.classList.contains('ai-open')) aiLauncher.classList.add('has-unread');
         }).catch(function () {
           typing.remove();
-          renderMsg('bot', '\\u26a0\\ufe0f Ulanishda xatolik. Internetni tekshirib qayta urinib ko\\'ring.', []);
+          renderMsg('bot', "\u26a0\ufe0f Ulanishda xatolik. Internetni tekshirib qayta urinib ko'ring.");
         }).finally(function () { aiSend.disabled = false; });
+      });
+
+      // ================= HUJJAT / RASM TAHLILI =================
+      var visionDrop = document.getElementById('ai-vision-drop');
+      var visionFile = document.getElementById('ai-vision-file');
+      var visionPreview = document.getElementById('ai-vision-preview');
+      var visionPromptEl = document.getElementById('ai-vision-prompt');
+      var visionSend = document.getElementById('ai-vision-send');
+      var visionResult = document.getElementById('ai-vision-result');
+      var visionData = null, visionMedia = null;
+
+      visionDrop.addEventListener('click', function () { visionFile.click(); });
+      visionDrop.addEventListener('dragover', function (e) { e.preventDefault(); visionDrop.classList.add('drag-over'); });
+      visionDrop.addEventListener('dragleave', function () { visionDrop.classList.remove('drag-over'); });
+      visionDrop.addEventListener('drop', function (e) {
+        e.preventDefault(); visionDrop.classList.remove('drag-over');
+        handleVisionFile(e.dataTransfer.files[0]);
+      });
+      visionFile.addEventListener('change', function () { handleVisionFile(visionFile.files[0]); });
+
+      function handleVisionFile(file) {
+        if (!file) return;
+        visionMedia = file.type || 'image/png';
+        var reader = new FileReader();
+        reader.onload = function () {
+          visionData = reader.result.split(',')[1];
+          visionPreview.src = reader.result;
+          visionPreview.style.display = 'block';
+          visionSend.disabled = false;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      visionSend.addEventListener('click', function () {
+        if (!visionData) return;
+        visionSend.disabled = true;
+        visionResult.innerHTML = '<span class="ai-tool-loader"></span>tahlil qilinmoqda...';
+        var prompt = visionPromptEl.value.trim() || "Bu rasmda nima ko'rsatilgan? Batafsil tushuntir.";
+        fetch('/api/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'vision', message: prompt, image: { data: visionData, media_type: visionMedia } })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+          visionResult.textContent = data.reply || "\u26a0\ufe0f Xatolik yuz berdi.";
+        }).catch(function () {
+          visionResult.textContent = "\u26a0\ufe0f Ulanishda xatolik.";
+        }).finally(function () { visionSend.disabled = false; });
+      });
+
+      // ================= MA'LUMOT BASHORATI =================
+      var dataDrop = document.getElementById('ai-data-drop');
+      var dataFile = document.getElementById('ai-data-file');
+      var dataPreviewEl = document.getElementById('ai-data-preview');
+      var dataPromptEl = document.getElementById('ai-data-prompt');
+      var dataSend = document.getElementById('ai-data-send');
+      var dataResult = document.getElementById('ai-data-result');
+      var csvText = null;
+
+      dataDrop.addEventListener('click', function () { dataFile.click(); });
+      dataDrop.addEventListener('dragover', function (e) { e.preventDefault(); dataDrop.classList.add('drag-over'); });
+      dataDrop.addEventListener('dragleave', function () { dataDrop.classList.remove('drag-over'); });
+      dataDrop.addEventListener('drop', function (e) {
+        e.preventDefault(); dataDrop.classList.remove('drag-over');
+        handleCsvFile(e.dataTransfer.files[0]);
+      });
+      dataFile.addEventListener('change', function () { handleCsvFile(dataFile.files[0]); });
+
+      function handleCsvFile(file) {
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          csvText = reader.result;
+          renderCsvPreview(csvText);
+          dataSend.disabled = false;
+        };
+        reader.readAsText(file);
+      }
+      function renderCsvPreview(text) {
+        var lines = text.trim().split('\n').slice(0, 6);
+        var out = '<table class="ai-csv-table">';
+        lines.forEach(function (line, i) {
+          var cells = line.split(',');
+          out += '<tr>' + cells.map(function (c) {
+            return (i === 0 ? '<th>' : '<td>') + c.trim() + (i === 0 ? '</th>' : '</td>');
+          }).join('') + '</tr>';
+        });
+        out += '</table>';
+        dataPreviewEl.innerHTML = out + '<div class="ai-csv-note">Birinchi qatorlar ko\'rsatildi</div>';
+      }
+
+      dataSend.addEventListener('click', function () {
+        if (!csvText) return;
+        dataSend.disabled = true;
+        dataResult.innerHTML = '<span class="ai-tool-loader"></span>hisoblanmoqda...';
+        var ask = dataPromptEl.value.trim() || "Bu ma'lumotni tahlil qil: tendensiyani tushuntir va keyingi qiymatlarni bashorat qil.";
+        var trimmed = csvText.length > 8000 ? csvText.slice(0, 8000) + '\n...(qisqartirildi)' : csvText;
+        fetch('/api/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'data', message: ask, csv: trimmed })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+          dataResult.textContent = data.reply || "\u26a0\ufe0f Xatolik yuz berdi.";
+        }).catch(function () {
+          dataResult.textContent = "\u26a0\ufe0f Ulanishda xatolik.";
+        }).finally(function () { dataSend.disabled = false; });
       });
     }
   })();
@@ -1217,28 +1248,64 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None,
       <div class="ai-avatar">✦</div>
       <div>
         <div class="ai-name">STAR AI yordamchi</div>
-        <div class="ai-sub"><span class="dot"></span>onlayn</div>
+        <div class="ai-sub"><span class="dot"></span>bepul · Google Gemini</div>
       </div>
     </div>
     <button id="ai-close" class="ai-close-btn" type="button" title="Yopish">✕</button>
   </div>
-  <div id="ai-body" class="ai-body">
-    <div class="ai-drop-overlay">📎 Faylni shu yerga tashlang</div>
-    <div class="ai-empty-hint">
-      <div class="ai-avatar">✦</div>
-      Salom! Men STAR AI yordamchiman.<br>Savol bering yoki rasm/hujjat/video/audio biriktiring.
+
+  <div class="ai-tabs">
+    <div class="ai-tab active" data-tab="chat">Suhbat</div>
+    <div class="ai-tab" data-tab="vision">Hujjat/rasm</div>
+    <div class="ai-tab" data-tab="data">Ma'lumot</div>
+  </div>
+
+  <!-- SUHBAT -->
+  <div class="ai-section active" id="ai-tab-chat">
+    <div id="ai-body" class="ai-body">
+      <div class="ai-empty-hint">
+        <div class="ai-avatar">✦</div>
+        Salom! Men STAR AI yordamchiman.<br>Anime, sayt yoki istalgan mavzuda savol bering.
+      </div>
+    </div>
+    <form id="ai-form" class="ai-foot">
+      <div class="ai-input-row">
+        <textarea id="ai-textarea" rows="1" placeholder="Xabar yozing..."></textarea>
+        <button id="ai-send" class="ai-send-btn" type="submit" title="Yuborish">➤</button>
+      </div>
+      <div class="ai-hint">Kerak bo'lsa Google'dan joriy ma'lumot qidirib javob beradi</div>
+    </form>
+  </div>
+
+  <!-- HUJJAT / RASM TAHLILI -->
+  <div class="ai-section" id="ai-tab-vision">
+    <div class="ai-tool-body">
+      <div class="ai-tool-sub">Rasm yoki skrinshot yuklang, AI mazmunini tushuntirib beradi.</div>
+      <div class="ai-dropzone" id="ai-vision-drop">📎 Rasmni shu yerga tashlang yoki bosing</div>
+      <input type="file" id="ai-vision-file" accept="image/*" hidden>
+      <img class="ai-preview-img" id="ai-vision-preview">
+      <div class="ai-tool-row">
+        <input type="text" id="ai-vision-prompt" placeholder="Nima haqida so'ramoqchisiz? (ixtiyoriy)">
+        <button id="ai-vision-send" class="ai-tool-btn" type="button" disabled>Tahlil qil</button>
+      </div>
+      <div class="ai-result" id="ai-vision-result">Natija shu yerda chiqadi...</div>
     </div>
   </div>
-  <div id="ai-files-preview" class="ai-files-preview"></div>
-  <form id="ai-form" class="ai-foot">
-    <div class="ai-input-row">
-      <button id="ai-attach-btn" class="ai-attach-btn" type="button" title="Fayl biriktirish">📎</button>
-      <textarea id="ai-textarea" rows="1" placeholder="Xabar yozing..."></textarea>
-      <button id="ai-send" class="ai-send-btn" type="submit" title="Yuborish">➤</button>
+
+  <!-- MA'LUMOT BASHORATI -->
+  <div class="ai-section" id="ai-tab-data">
+    <div class="ai-tool-body">
+      <div class="ai-tool-sub">CSV fayl yuklang (vergul bilan ajratilgan), AI tendensiyani tahlil qilib bashorat beradi.</div>
+      <div class="ai-dropzone" id="ai-data-drop">📎 CSV faylni shu yerga tashlang yoki bosing</div>
+      <input type="file" id="ai-data-file" accept=".csv,text/csv" hidden>
+      <div id="ai-data-preview"></div>
+      <div class="ai-tool-row">
+        <input type="text" id="ai-data-prompt" placeholder="Masalan: keyingi oy uchun bashorat qil">
+        <button id="ai-data-send" class="ai-tool-btn" type="button" disabled>Tahlil qil</button>
+      </div>
+      <div class="ai-result" id="ai-data-result">Natija shu yerda chiqadi...</div>
     </div>
-    <input id="ai-file-input" type="file" multiple hidden accept="image/*,application/pdf,audio/*,video/*,text/*,.txt,.md,.csv,.json">
-    <div class="ai-hint">Rasm, PDF va matnli fayllarni to'liq o'qiy oladi · video/audio faqat nom bo'yicha</div>
-  </form>
+  </div>
 </div>
 <script>{SCRIPTS}</script>
 </body>
@@ -1805,100 +1872,94 @@ async def api_profile_update(request):
     return web.json_response({"ok": True})
 
 
-def _build_assistant_content(message: str, files: list) -> list:
-    """Foydalanuvchi xabari va biriktirilgan fayllardan Anthropic API uchun
-    content bloklarini yasaydi."""
-    content = []
-    if message:
-        content.append({"type": "text", "text": message})
-    for f in files or []:
-        if not isinstance(f, dict):
-            continue
-        name = str(f.get("name", "fayl"))[:200]
-        kind = f.get("kind")
-        media_type = f.get("media_type") or "application/octet-stream"
-        if kind == "image" and f.get("data"):
-            content.append({
-                "type": "image",
-                "source": {"type": "base64", "media_type": media_type, "data": f["data"]},
-            })
-        elif kind == "pdf" and f.get("data"):
-            content.append({
-                "type": "document",
-                "source": {"type": "base64", "media_type": "application/pdf", "data": f["data"]},
-            })
-        elif kind == "text" and f.get("text"):
-            content.append({"type": "text", "text": f"[Biriktirilgan fayl: {name}]\n{f['text']}"})
-        else:
-            size_kb = round((f.get("size") or 0) / 1024)
-            content.append({
-                "type": "text",
-                "text": f"[Foydalanuvchi fayl biriktirdi: {name} ({media_type}, ~{size_kb}KB) -- "
-                        f"bu turdagi faylning ichini ko'ra/eshita olmaysan, faqat nomi va "
-                        f"kontekstga qarab javob ber.]",
-            })
-    if not content:
-        content.append({"type": "text", "text": "(bo'sh xabar)"})
-    return content
+async def _call_gemini(contents: list, system_prompt: str, use_search: bool = True) -> str:
+    """Google Gemini API'ga (bepul tarif) so'rov yuboradi va matn javobini qaytaradi."""
+    if not GEMINI_API_KEY:
+        return "AI yordamchi hali sozlanmagan (server tomonida GEMINI_API_KEY yo'q)."
+
+    payload = {
+        "contents": contents,
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "generationConfig": {"maxOutputTokens": 1024},
+    }
+    if use_search:
+        payload["tools"] = [{"google_search": {}}]
+
+    headers = {"content-type": "application/json"}
+    url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers,
+                                     timeout=aiohttp.ClientTimeout(total=45)) as resp:
+                result = await resp.json()
+                if resp.status != 200:
+                    err_msg = (result.get("error") or {}).get("message", "Noma'lum xatolik")
+                    return f"⚠️ AI xatosi: {err_msg}"
+    except Exception:
+        return "⚠️ AI yordamchiga ulanib bo'lmadi, birozdan so'ng qayta urinib ko'ring."
+
+    candidates = result.get("candidates") or []
+    if not candidates:
+        reason = result.get("promptFeedback", {}).get("blockReason")
+        if reason:
+            return f"⚠️ So'rov bloklandi ({reason})."
+        return "..."
+    parts = candidates[0].get("content", {}).get("parts", []) or []
+    text = "\n".join(p.get("text", "") for p in parts if p.get("text")).strip()
+    return text or "..."
 
 
 async def api_assistant(request):
-    if not ANTHROPIC_API_KEY:
-        return web.json_response(
-            {"reply": "AI yordamchi hali sozlanmagan (server tomonida ANTHROPIC_API_KEY yo'q)."},
-            status=200,
-        )
     try:
         data = await request.json()
     except Exception:
         return web.json_response({"reply": "Noto'g'ri so'rov."}, status=400)
 
+    mode = data.get("mode") or "chat"
     message = str(data.get("message", ""))[:8000]
-    files = data.get("files") or []
-    if not isinstance(files, list):
-        files = []
-    files = files[:5]
+
+    if mode == "vision":
+        image = data.get("image") or {}
+        img_data = image.get("data")
+        media_type = image.get("media_type") or "image/png"
+        if not img_data:
+            return web.json_response({"reply": "Rasm topilmadi."}, status=200)
+        contents = [{
+            "role": "user",
+            "parts": [
+                {"text": message or "Bu rasmda nima ko'rsatilgan? Batafsil tushuntir."},
+                {"inlineData": {"mimeType": media_type, "data": img_data}},
+            ],
+        }]
+        reply = await _call_gemini(contents, VISION_SYSTEM_PROMPT, use_search=False)
+        return web.json_response({"reply": reply})
+
+    if mode == "data":
+        csv_text = str(data.get("csv", ""))[:20000]
+        if not csv_text:
+            return web.json_response({"reply": "CSV fayl topilmadi."}, status=200)
+        prompt = (
+            f"Quyidagi CSV ma'lumotini tahlil qil.\n\nSo'rov: {message}\n\nCSV:\n{csv_text}\n\n"
+            f"Javobni aniq, raqamlar va qisqa xulosa bilan ber."
+        )
+        contents = [{"role": "user", "parts": [{"text": prompt}]}]
+        reply = await _call_gemini(contents, DATA_SYSTEM_PROMPT, use_search=False)
+        return web.json_response({"reply": reply})
+
+    # mode == "chat"
     raw_history = data.get("history") or []
     if not isinstance(raw_history, list):
         raw_history = []
-
-    messages = []
+    contents = []
     for item in raw_history[-12:]:
         if not isinstance(item, dict):
             continue
-        role = "user" if item.get("role") == "user" else "assistant"
+        role = "user" if item.get("role") == "user" else "model"
         text = str(item.get("text", ""))[:4000]
         if text:
-            messages.append({"role": role, "content": text})
-    messages.append({"role": "user", "content": _build_assistant_content(message, files)})
-
-    payload = {
-        "model": ASSISTANT_MODEL,
-        "max_tokens": 1024,
-        "system": ASSISTANT_SYSTEM_PROMPT,
-        "messages": messages,
-    }
-    headers = {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(ANTHROPIC_API_URL, json=payload, headers=headers,
-                                     timeout=aiohttp.ClientTimeout(total=45)) as resp:
-                result = await resp.json()
-                if resp.status != 200:
-                    err_msg = (result.get("error") or {}).get("message", "Noma'lum xatolik")
-                    return web.json_response({"reply": f"⚠️ AI xatosi: {err_msg}"}, status=200)
-    except Exception:
-        return web.json_response(
-            {"reply": "⚠️ AI yordamchiga ulanib bo'lmadi, birozdan so'ng qayta urinib ko'ring."},
-            status=200,
-        )
-
-    reply_parts = [b.get("text", "") for b in result.get("content", []) if b.get("type") == "text"]
-    reply = "\n".join(p for p in reply_parts if p).strip() or "..."
+            contents.append({"role": role, "parts": [{"text": text}]})
+    contents.append({"role": "user", "parts": [{"text": message or "salom"}]})
+    reply = await _call_gemini(contents, ASSISTANT_SYSTEM_PROMPT, use_search=True)
     return web.json_response({"reply": reply})
 
 
