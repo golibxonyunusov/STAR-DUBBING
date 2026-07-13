@@ -2,11 +2,16 @@
 Bu modul ham veb-sayt (web.py), ham Telegram bot (handlers/user.py) tomonidan
 ishlatiladi -- shu sababli Gemini'ga so'rov yuborish kodi faqat bitta joyda."""
 
+import asyncio
+
 import aiohttp
 
-from config import GEMINI_API_KEY, ASSISTANT_MODEL
+from config import GEMINI_API_KEY, ASSISTANT_MODEL, ASSISTANT_FALLBACK_MODEL
 
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+# Asosiy model band bo'lsa, shuncha soniya kutib qayta uriladi (har urinishda o'sib boradi).
+RETRY_DELAYS = (1, 2)
 
 # --- SAYTDAGI chat oynasi uchun tizim prompti ---
 SITE_SYSTEM_PROMPT = (
@@ -65,6 +70,54 @@ def _build_parts(message: str, files: list | None = None) -> list:
     return parts
 
 
+def _looks_overloaded(status: int, result: dict) -> bool:
+    """Google serveri band bo'lganda qaytaradigan xatoliklarni aniqlaydi
+    (429/503 yoki xabar matnida 'overloaded'/'high demand'/'unavailable')."""
+    if status in (429, 503):
+        return True
+    msg = ((result or {}).get("error") or {}).get("message", "").lower()
+    return "overloaded" in msg or "high demand" in msg or "unavailable" in msg
+
+
+async def _call_model(model: str, payload: dict, headers: dict):
+    """Bitta modelga bir marta so'rov yuboradi.
+    Muvaffaqiyatli bo'lsa (status, result), tarmoq xatosida (None, None) qaytaradi."""
+    url = GEMINI_API_URL.format(model=model)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers,
+                                     timeout=aiohttp.ClientTimeout(total=45)) as resp:
+                result = await resp.json()
+                return resp.status, result
+    except Exception:
+        return None, None
+
+
+async def _call_with_retry_and_fallback(payload: dict, headers: dict):
+    """Asosiy modelga 1-2 marta qayta urinadi (band bo'lsa), baribir
+    ishlamasa zaxira modelga o'tadi. (status, result) qaytaradi."""
+    models = [ASSISTANT_MODEL]
+    if ASSISTANT_FALLBACK_MODEL and ASSISTANT_FALLBACK_MODEL != ASSISTANT_MODEL:
+        models.append(ASSISTANT_FALLBACK_MODEL)
+
+    status, result = None, None
+    for i, model in enumerate(models):
+        attempts = len(RETRY_DELAYS) + 1 if i == 0 else 1  # faqat asosiy modelga qayta uriladi
+        for attempt in range(attempts):
+            status, result = await _call_model(model, payload, headers)
+            if status == 200 or status is None or not _looks_overloaded(status, result or {}):
+                break
+            if attempt < len(RETRY_DELAYS):
+                await asyncio.sleep(RETRY_DELAYS[attempt])
+        if status == 200:
+            return status, result
+        if status is not None and not _looks_overloaded(status, result or {}):
+            # Band bo'lish emas, boshqa turdagi xato (masalan noto'g'ri kalit) --
+            # zaxira modelga o'tishning ma'nosi yo'q.
+            return status, result
+    return status, result
+
+
 async def ask_gemini(
     message: str,
     system_prompt: str,
@@ -97,17 +150,16 @@ async def ask_gemini(
         "x-goog-api-key": GEMINI_API_KEY,
         "content-type": "application/json",
     }
-    url = GEMINI_API_URL.format(model=ASSISTANT_MODEL)
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, headers=headers,
-                                     timeout=aiohttp.ClientTimeout(total=45)) as resp:
-                result = await resp.json()
-                if resp.status != 200:
-                    err_msg = (result.get("error") or {}).get("message", "Noma'lum xatolik")
-                    return f"⚠️ AI xatosi: {err_msg}"
-    except Exception:
+
+    status, result = await _call_with_retry_and_fallback(payload, headers)
+    if status is None:
         return "⚠️ AI yordamchiga ulanib bo'lmadi, birozdan so'ng qayta urinib ko'ring."
+    if status != 200:
+        if _looks_overloaded(status, result or {}):
+            return ("⚠️ AI hozir juda band (Google serverida yuklama ko'p). "
+                    "Bir necha soniyadan so'ng qayta urinib ko'ring.")
+        err_msg = ((result or {}).get("error") or {}).get("message", "Noma'lum xatolik")
+        return f"⚠️ AI xatosi: {err_msg}"
 
     candidates = result.get("candidates") or []
     if candidates:

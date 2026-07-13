@@ -31,6 +31,9 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 # sababli "model eskirdi" xatosiga kam duch kelinadi). Agar kerak bo'lsa
 # aniq versiyaga ham o'zgartirish mumkin (masalan "gemini-3.5-flash").
 ASSISTANT_MODEL = os.getenv("ASSISTANT_MODEL", "gemini-flash-latest")
+# Asosiy model band/ishlamay qolsa (Google server yukini oshirib yuborsa),
+# AI yordamchi avtomatik shu zaxira modelga o'tadi.
+ASSISTANT_FALLBACK_MODEL = os.getenv("ASSISTANT_FALLBACK_MODEL", "gemini-2.5-flash-lite")
 
 # --- TURSO (bulutdagi doimiy baza) ---
 # Bot Render'da qayta ishga tushganda (uxlab qolish, qayta deploy, crash)

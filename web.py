@@ -265,6 +265,18 @@ STYLES = """
     transition: all .2s;
   }
   nav a.active, nav a:hover { color: var(--ink); border-bottom-color: var(--violet); }
+  .nav-toggle {
+    display: none; width: 38px; height: 38px; border-radius: 8px; flex-shrink: 0;
+    border: 1px solid var(--line); background: var(--panel); cursor: pointer;
+    align-items: center; justify-content: center; flex-direction: column; gap: 4px;
+  }
+  .nav-toggle span {
+    display: block; width: 18px; height: 2px; background: var(--ink); border-radius: 2px;
+    transition: transform .2s, opacity .2s;
+  }
+  body.nav-open .nav-toggle span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+  body.nav-open .nav-toggle span:nth-child(2) { opacity: 0; }
+  body.nav-open .nav-toggle span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
   .search-wrap { position: relative; min-width: 240px; }
   .search-box {
     display: flex; align-items: center; gap: 9px;
@@ -683,6 +695,26 @@ STYLES = """
   footer .f-logo { color: var(--ink); font-weight: 700; letter-spacing: 0.5px; }
   footer a { color: var(--violet); font-weight: 600; }
 
+  @media (max-width: 860px) {
+    header .bar { position: relative; }
+    .nav-toggle { display: inline-flex; }
+    nav {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 25;
+      flex-direction: column; gap: 0; background: var(--panel);
+      border-bottom: 1px solid var(--line); border-top: 1px solid var(--line-soft);
+      max-height: 0; overflow: hidden; opacity: 0;
+      box-shadow: 0 24px 50px -18px #000000c0;
+      transition: max-height .25s ease, opacity .2s ease;
+    }
+    body.nav-open nav { max-height: 400px; opacity: 1; }
+    nav a {
+      padding: 14px 24px; border-bottom: 1px solid var(--line-soft);
+      border-bottom-width: 1px; text-transform: none; font-size: 14.5px; letter-spacing: 0;
+    }
+    nav a.active, nav a:hover { background: var(--panel-hi); border-bottom-color: var(--line-soft); }
+    .search-wrap { min-width: 0; flex: 1; }
+  }
+
   @media (max-width: 560px) {
     .rail { padding: 5px 16px; }
     header .bar { padding: 12px 16px; }
@@ -895,6 +927,24 @@ SCRIPTS = """
       });
       input.addEventListener('focus', function () {
         if (input.value.trim().length >= 2 && box.innerHTML) box.classList.add('show');
+      });
+    }
+
+    // ---- mobil navigatsiya (hamburger) ----
+    var navToggle = document.getElementById('nav-toggle');
+    var siteNav = document.getElementById('site-nav');
+    if (navToggle && siteNav) {
+      navToggle.addEventListener('click', function () {
+        document.body.classList.toggle('nav-open');
+      });
+      siteNav.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', function () { document.body.classList.remove('nav-open'); });
+      });
+      document.addEventListener('click', function (e) {
+        if (document.body.classList.contains('nav-open') &&
+            !siteNav.contains(e.target) && e.target !== navToggle && !navToggle.contains(e.target)) {
+          document.body.classList.remove('nav-open');
+        }
       });
     }
 
@@ -1162,7 +1212,10 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None,
   </div>
   <div class="bar">
     <a class="logo" href="/"><span class="star-ic">✦</span> <span class="grad-txt">STAR DUBBING</span></a>
-    <nav>
+    <button id="nav-toggle" class="nav-toggle" type="button" aria-label="Menyu">
+      <span></span><span></span><span></span>
+    </button>
+    <nav id="site-nav">
       <a href="/" class="{'active' if active == 'home' else ''}">Bosh sahifa</a>
       <a href="/janrlar" class="{'active' if active == 'janrlar' else ''}">Janrlar</a>
       <a href="/top" class="{'active' if active == 'top' else ''}">TOP</a>
