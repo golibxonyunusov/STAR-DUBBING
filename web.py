@@ -719,15 +719,29 @@ STYLES = """
     .rail { padding: 5px 16px; }
     header .bar { padding: 12px 16px; }
     main { padding: 0 16px 50px; }
-    .search-wrap { min-width: 0; width: 100%; order: 3; }
+    .search-wrap { flex: 1 1 100%; min-width: 0; width: auto; order: 3; margin-top: 2px; }
     .detail { gap: 22px; }
     .detail .poster-big-wrap { width: 170px; }
     .stats-row { gap: 26px; }
-    .ai-panel { width: calc(100vw - 24px); height: min(70vh, 560px); right: 12px; bottom: 82px; }
+    .ai-panel {
+      width: calc(100% - 20px); left: 10px; right: 10px; margin: 0 auto;
+      height: min(64vh, 540px); bottom: 86px; border-radius: 18px;
+    }
     .ai-launcher { right: 16px; bottom: 16px; }
   }
 
   /* ---- AI yordamchi (pastki burchakdagi doimiy chat oynasi) ---- */
+  .ai-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 99;
+    background: rgba(6, 6, 16, 0.6); opacity: 0; pointer-events: none;
+    transition: opacity .2s ease;
+  }
+  body.ai-open .ai-backdrop { opacity: 1; }
+  @media (max-width: 560px) {
+    .ai-backdrop { display: block; }
+    body.ai-open .ai-backdrop { pointer-events: auto; }
+  }
+
   .ai-launcher {
     position: fixed; right: 26px; bottom: 26px; z-index: 100;
     width: 58px; height: 58px; border-radius: 50%; border: none; cursor: pointer;
@@ -970,6 +984,7 @@ SCRIPTS = """
     // ---- AI yordamchi widget (barcha sahifalarda saqlanib qoladi) ----
     var aiLauncher = document.getElementById('ai-launcher');
     var aiPanel = document.getElementById('ai-panel');
+    var aiBackdrop = document.getElementById('ai-backdrop');
     var aiBody = document.getElementById('ai-body');
     var aiForm = document.getElementById('ai-form');
     var aiInput = document.getElementById('ai-textarea');
@@ -996,6 +1011,7 @@ SCRIPTS = """
         setOpen(!document.body.classList.contains('ai-open'));
       });
       aiClose.addEventListener('click', function () { setOpen(false); });
+      if (aiBackdrop) aiBackdrop.addEventListener('click', function () { setOpen(false); });
       if (localStorage.getItem(LS_OPEN) === '1') setOpen(true);
 
       function fileIcon(kind) {
@@ -1247,6 +1263,7 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None,
     <a href="/aloqa">Aloqa</a>
   </div>
 </footer>
+<div id="ai-backdrop" class="ai-backdrop"></div>
 <button id="ai-launcher" class="ai-launcher" type="button" title="AI yordamchi">
   <span class="ping"></span>
   <span class="ic-open">✦</span>
