@@ -11,6 +11,7 @@ from config import BOT_TOKEN
 from database import init_db
 from handlers import admin, user
 import web as website
+import monthly_rewards
 
 
 async def start_web_server(bot: Bot):
@@ -54,6 +55,8 @@ async def main():
     dp.include_router(user.router)
 
     await start_web_server(bot)
+
+    asyncio.create_task(monthly_rewards.monthly_rewards_loop(bot))
 
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)

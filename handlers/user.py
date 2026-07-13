@@ -541,6 +541,29 @@ async def show_top_menu(message: Message, bot: Bot):
     )
 
 
+@router.callback_query(F.data == "monthlywinners")
+async def show_monthly_winners(call: CallbackQuery):
+    month, rows = await db.get_latest_monthly_winners()
+    if not month:
+        await call.answer(
+            "Hali oylik g'oliblar aniqlanmagan. Birinchi e'lon keyingi oyning 1-sanasida chiqadi!",
+            show_alert=True,
+        )
+        return
+
+    labels = {"viewer": "👤 Eng faol tomoshabin", "dubber": "🎙 Eng zo'r dublyajchi"}
+    units = {"viewer": "epizod", "dubber": "marta 5⭐"}
+    lines = [f"🎁 <b>{month} oyining g'oliblari</b>\n"]
+    for r in rows:
+        name = r["full_name"] or (f"@{r['username']}" if r["username"] else f"ID{r['user_id']}")
+        label = labels.get(r["category"], r["category"])
+        unit = units.get(r["category"], "")
+        lines.append(f"{label}: <b>{name}</b> — {r['metric_value']} {unit}")
+    lines.append("\n🎁 Sovrin: <b>Telegram Premium</b>\nHar oyning 1-sanasida yangi g'oliblar e'lon qilinadi — faol bo'ling! 🚀")
+    await call.message.answer("\n".join(lines))
+    await call.answer()
+
+
 @router.callback_query(F.data == "topusers")
 async def show_top_users(call: CallbackQuery):
     rows = await db.get_top_users(10)

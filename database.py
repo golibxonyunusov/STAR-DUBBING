@@ -105,6 +105,15 @@ CREATE TABLE IF NOT EXISTS dub_ratings (
     rated_at TEXT,
     PRIMARY KEY (dub_id, user_id)
 );
+
+CREATE TABLE IF NOT EXISTS monthly_winners (
+    month TEXT NOT NULL,
+    category TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    metric_value INTEGER NOT NULL,
+    announced_at TEXT,
+    PRIMARY KEY (month, category)
+);
 """
 
 
@@ -737,3 +746,87 @@ async def get_top_dubs(limit: int = 10, offset: int = 0):
         (limit, offset),
     )
     return [dict(zip(rs.columns, row)) for row in rs.rows]
+
+
+# ---------- OYLIK SOVRINLAR (eng faol tomoshabin / eng zo'r dublyajchi) ----------
+
+async def get_top_viewer_for_period(start_iso: str, end_iso: str):
+    """Berilgan davrda eng ko'p (turli) epizod ko'rgan foydalanuvchi.
+    (user_dict, ko'rgan_soni) yoki (None, 0) agar hech kim bo'lmasa."""
+    client = get_client()
+    rs = await client.execute(
+        """
+        SELECT u.user_id, u.username, u.full_name, COUNT(*) AS watched
+        FROM episode_views v
+        JOIN users u ON u.user_id = v.user_id
+        WHERE v.viewed_at >= ? AND v.viewed_at < ?
+        GROUP BY v.user_id
+        ORDER BY watched DESC
+        LIMIT 1
+        """,
+        (start_iso, end_iso),
+    )
+    if not rs.rows:
+        return None, 0
+    row = dict(zip(rs.columns, rs.rows[0]))
+    return row, row["watched"]
+
+
+async def get_top_dubber_for_period(start_iso: str, end_iso: str):
+    """Berilgan davrda o'z dublyajlariga eng ko'p 5-yulduzli baho olgan
+    foydalanuvchi. (user_dict, 5_yulduzlar_soni) yoki (None, 0)."""
+    client = get_client()
+    rs = await client.execute(
+        """
+        SELECT d.user_id AS user_id, u.username, u.full_name, COUNT(*) AS five_stars
+        FROM dub_ratings r
+        JOIN dub_submissions d ON d.id = r.dub_id
+        JOIN users u ON u.user_id = d.user_id
+        WHERE r.rating = 5 AND r.rated_at >= ? AND r.rated_at < ?
+        GROUP BY d.user_id
+        ORDER BY five_stars DESC
+        LIMIT 1
+        """,
+        (start_iso, end_iso),
+    )
+    if not rs.rows:
+        return None, 0
+    row = dict(zip(rs.columns, rs.rows[0]))
+    return row, row["five_stars"]
+
+
+async def has_monthly_winner_recorded(month: str, category: str) -> bool:
+    client = get_client()
+    rs = await client.execute(
+        "SELECT 1 FROM monthly_winners WHERE month = ? AND category = ?", (month, category)
+    )
+    return bool(rs.rows)
+
+
+async def record_monthly_winner(month: str, category: str, user_id: int, metric_value: int):
+    client = get_client()
+    await client.execute(
+        "INSERT OR IGNORE INTO monthly_winners (month, category, user_id, metric_value, announced_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (month, category, user_id, metric_value, datetime.utcnow().isoformat()),
+    )
+
+
+async def get_latest_monthly_winners():
+    """Eng oxirgi e'lon qilingan oy uchun barcha kategoriya g'oliblarini qaytaradi.
+    (oy_nomi, [g'oliblar ro'yxati]) yoki (None, []) agar hali hech narsa bo'lmasa."""
+    client = get_client()
+    rs = await client.execute("SELECT month FROM monthly_winners ORDER BY month DESC LIMIT 1")
+    if not rs.rows:
+        return None, []
+    month = rs.rows[0][0]
+    rs2 = await client.execute(
+        """
+        SELECT w.category, w.user_id, w.metric_value, u.username, u.full_name
+        FROM monthly_winners w
+        JOIN users u ON u.user_id = w.user_id
+        WHERE w.month = ?
+        """,
+        (month,),
+    )
+    return month, [dict(zip(rs2.columns, row)) for row in rs2.rows]

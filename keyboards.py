@@ -183,6 +183,7 @@ def anime_vip_toggle_kb(anime_id, is_vip_only):
 
 def top_menu_kb() -> InlineKeyboardMarkup:
     rows = [
+        [InlineKeyboardButton(text="🎁 Oylik g'oliblar", callback_data="monthlywinners")],
         [InlineKeyboardButton(text="👤 Top foydalanuvchilar", callback_data="topusers")],
         [InlineKeyboardButton(text="🌟 Top animelar", callback_data="topanime")],
         [InlineKeyboardButton(text="🎙 Top dublyajlar", callback_data="topdubs_0")],
