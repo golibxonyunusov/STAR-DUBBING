@@ -748,7 +748,7 @@ async def ai_photo(message: Message, bot: Bot):
 
     files = [{"kind": "image", "media_type": "image/jpeg", "data": data, "name": "photo.jpg"}]
     caption = (message.caption or "Bu rasmda nima bor? Tasvirlab ber.").strip()
-    reply = await ai_assistant.ask_gemini(caption, system_prompt=ai_assistant.BOT_SYSTEM_PROMPT, files=files)
+    reply = await ai_assistant.ask_gemini(caption, system_prompt=ai_assistant.BOT_SYSTEM_PROMPT, files=files, output_format="telegram")
     await message.answer(reply)
 
 
@@ -784,7 +784,7 @@ async def ai_document(message: Message, bot: Bot):
         files = [{"kind": "other", "media_type": mime or "noma'lum", "size": doc.file_size or 0, "name": name}]
 
     caption = (message.caption or "Bu faylni tekshirib, qisqacha tushuntirib ber.").strip()
-    reply = await ai_assistant.ask_gemini(caption, system_prompt=ai_assistant.BOT_SYSTEM_PROMPT, files=files)
+    reply = await ai_assistant.ask_gemini(caption, system_prompt=ai_assistant.BOT_SYSTEM_PROMPT, files=files, output_format="telegram")
     await message.answer(reply)
 
 
@@ -816,7 +816,7 @@ async def text_search(message: Message, bot: Bot):
         # Anime bazasida topilmadi -- bu erkin savol/xabar bo'lishi mumkin,
         # shuning uchun AI yordamchiga yuboramiz.
         await bot.send_chat_action(message.chat.id, "typing")
-        reply = await ai_assistant.ask_gemini(query, system_prompt=ai_assistant.BOT_SYSTEM_PROMPT)
+        reply = await ai_assistant.ask_gemini(query, system_prompt=ai_assistant.BOT_SYSTEM_PROMPT, output_format="telegram")
         await message.answer(reply)
         return
 

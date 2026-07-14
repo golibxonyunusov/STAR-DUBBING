@@ -3,6 +3,8 @@ Bu modul ham veb-sayt (web.py), ham Telegram bot (handlers/user.py) tomonidan
 ishlatiladi -- shu sababli Gemini'ga so'rov yuborish kodi faqat bitta joyda."""
 
 import asyncio
+import html
+import re
 
 import aiohttp
 
@@ -70,6 +72,41 @@ def _build_parts(message: str, files: list | None = None) -> list:
     return parts
 
 
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+_UNDERSCORE_BOLD_RE = re.compile(r"__(.+?)__", re.DOTALL)
+_ITALIC_RE = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", re.DOTALL)
+_INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
+_CODE_BLOCK_RE = re.compile(r"```[a-zA-Z0-9]*\n?([\s\S]*?)```")
+_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s*(.+)$", re.MULTILINE)
+
+
+def _markdown_to_plain(text: str) -> str:
+    """Sayt uchun -- Gemini ba'zan Markdown (** __ ` #) ishlatadi, lekin sayt
+    javobni oddiy matn sifatida ko'rsatadi, shu sababli belgilarni olib
+    tashlaymiz (matn mazmuni saqlanib qoladi)."""
+    text = _CODE_BLOCK_RE.sub(lambda m: m.group(1), text)
+    text = _HEADING_RE.sub(r"\1", text)
+    text = _BOLD_RE.sub(r"\1", text)
+    text = _UNDERSCORE_BOLD_RE.sub(r"\1", text)
+    text = _ITALIC_RE.sub(r"\1", text)
+    text = _INLINE_CODE_RE.sub(r"\1", text)
+    return text
+
+
+def _markdown_to_telegram_html(text: str) -> str:
+    """Telegram uchun -- avval HTML maxsus belgilarini escape qiladi (xatoga
+    yo'l qo'ymaslik uchun), so'ng Markdown (** __ * ` #) ni Telegram
+    tushunadigan HTML teglariga aylantiradi."""
+    text = html.escape(text, quote=False)
+    text = _CODE_BLOCK_RE.sub(lambda m: f"<pre>{m.group(1)}</pre>", text)
+    text = _HEADING_RE.sub(r"<b>\1</b>", text)
+    text = _BOLD_RE.sub(r"<b>\1</b>", text)
+    text = _UNDERSCORE_BOLD_RE.sub(r"<b>\1</b>", text)
+    text = _ITALIC_RE.sub(r"<i>\1</i>", text)
+    text = _INLINE_CODE_RE.sub(r"<code>\1</code>", text)
+    return text
+
+
 def _looks_overloaded(status: int, result: dict) -> bool:
     """Google serveri band bo'lganda qaytaradigan xatoliklarni aniqlaydi
     (429/503 yoki xabar matnida 'overloaded'/'high demand'/'unavailable')."""
@@ -118,15 +155,16 @@ async def _call_with_retry_and_fallback(payload: dict, headers: dict):
     return status, result
 
 
-async def ask_gemini(
+async def _ask_gemini_raw(
     message: str,
     system_prompt: str,
     history: list | None = None,
     files: list | None = None,
 ) -> str:
-    """Gemini API'ga so'rov yuboradi va matnli javobni qaytaradi.
-    Hech qachon exception ko'tarmaydi -- xatolik bo'lsa, foydalanuvchiga
-    ko'rsatsa bo'ladigan (⚠️ bilan boshlanadigan) xabar qaytaradi."""
+    """Gemini API'ga so'rov yuboradi va xom (formatlanmagan) matnli javobni
+    qaytaradi. Hech qachon exception ko'tarmaydi -- xatolik bo'lsa,
+    foydalanuvchiga ko'rsatsa bo'ladigan (⚠️ bilan boshlanadigan) xabar
+    qaytaradi."""
     if not GEMINI_API_KEY:
         return ("AI yordamchi hali sozlanmagan (server tomonida GEMINI_API_KEY yo'q). "
                 "Bepul kalitni https://aistudio.google.com/apikey saytidan olsa bo'ladi.")
@@ -175,3 +213,21 @@ async def ask_gemini(
     if blocked:
         return "⚠️ Bu so'rovga javob berib bo'lmadi (xavfsizlik cheklovi)."
     return "..."
+
+
+async def ask_gemini(
+    message: str,
+    system_prompt: str,
+    history: list | None = None,
+    files: list | None = None,
+    output_format: str = "plain",
+) -> str:
+    """Gemini API'ga so'rov yuboradi va JAVOBNI CHIQISH JOYIGA MOS formatda
+    qaytaradi:
+    - output_format="plain"    -> sayt uchun (Markdown belgilari olib tashlanadi)
+    - output_format="telegram" -> bot uchun (Markdown -> Telegram HTML teglariga o'giriladi)
+    """
+    reply = await _ask_gemini_raw(message, system_prompt, history, files)
+    if output_format == "telegram":
+        return _markdown_to_telegram_html(reply)
+    return _markdown_to_plain(reply)
