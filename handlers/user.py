@@ -456,7 +456,16 @@ async def render_anime_card(message: Message, anime_id: int, user_id: int) -> bo
     kb = anime_card_kb(anime_id, episodes_count, avg_rating, votes)
 
     if anime["poster_file_id"]:
-        await message.answer_photo(anime["poster_file_id"], caption=caption, reply_markup=kb)
+        try:
+            await message.answer_photo(anime["poster_file_id"], caption=caption, reply_markup=kb)
+        except TelegramBadRequest as e:
+            # Eski bot tokeniga tegishli poster file_id endi yaroqsiz --
+            # rasmsiz bo'lsa ham, foydalanuvchi kartani ko'rishda davom etsin.
+            logging.warning(
+                f"[ANIME POSTER] anime_id={anime_id} poster file_id yaroqsiz ({e}) -- "
+                f"rasmsiz yuborildi. Admin posterni qayta yuklashi kerak."
+            )
+            await message.answer(caption, reply_markup=kb)
     else:
         await message.answer(caption, reply_markup=kb)
     return True
@@ -534,11 +543,22 @@ async def deliver_episode(message: Message, anime_id: int, ep_num: int, user_id:
     await db.record_episode_view(user_id, episode["id"], anime_id)
     has_prev, has_next = prev_ep is not None, next_ep is not None
 
-    await message.answer_video(
-        episode["file_id"],
-        caption=f"🎬 <b>{anime['title']}</b>\n{ep_num}-qism / {total_eps}",
-        reply_markup=episode_nav_kb(anime_id, ep_num, has_prev, has_next),
-    )
+    try:
+        await message.answer_video(
+            episode["file_id"],
+            caption=f"🎬 <b>{anime['title']}</b>\n{ep_num}-qism / {total_eps}",
+            reply_markup=episode_nav_kb(anime_id, ep_num, has_prev, has_next),
+        )
+    except TelegramBadRequest as e:
+        logging.warning(
+            f"[EPIZOD VIDEO] anime_id={anime_id} ep={ep_num} file_id yaroqsiz ({e}) -- "
+            f"admin videoni qayta yuklashi kerak."
+        )
+        await message.answer(
+            f"⚠️ Kechirasiz, <b>{anime['title']}</b> {ep_num}-qismining videosi hozircha "
+            f"mavjud emas. Admin tez orada qayta yuklab qo'yadi.",
+            reply_markup=episode_nav_kb(anime_id, ep_num, has_prev, has_next),
+        )
     return True
 
 
