@@ -78,6 +78,22 @@ async def get_required_channels():
     return REQUIRED_CHANNELS + db_list
 
 
+async def _check_one_channel(bot: Bot, ch: dict, user_id: int) -> bool:
+    """Bitta kanal uchun obunani tekshiradi. True -- obuna bor (yoki
+    tekshirib bo'lmadi, bloklamaymiz), False -- obuna yo'q (bloklash kerak)."""
+    try:
+        member = await bot.get_chat_member(chat_id=ch["chat_id"], user_id=user_id)
+        logging.info(f"[OBUNA] kanal={ch['chat_id']} user={user_id} status={member.status}")
+        if member.status in ("left", "kicked"):
+            logging.info(f"[OBUNA] user={user_id} {ch['chat_id']}ga obuna emas -- BLOKLANDI.")
+            return False
+        return True
+    except TelegramBadRequest as e:
+        # bot kanalga admin qilib qo'yilmagan yoki chat topilmadi -- bloklamaymiz
+        logging.warning(f"[OBUNA] kanal={ch['chat_id']} tekshirib bo'lmadi: {e} -- o'tkazib yuborildi.")
+        return True
+
+
 async def check_subscription(bot: Bot, user_id: int) -> bool:
     # VIP foydalanuvchilar majburiy obunadan ozod
     if await db.is_vip(user_id):
@@ -89,17 +105,14 @@ async def check_subscription(bot: Bot, user_id: int) -> bool:
     if not channels:
         logging.info("[OBUNA] Ro'yxatda kanal yo'q, tekshiruv o'tkazib yuborildi.")
         return True
-    for ch in channels:
-        try:
-            member = await bot.get_chat_member(chat_id=ch["chat_id"], user_id=user_id)
-            logging.info(f"[OBUNA] kanal={ch['chat_id']} user={user_id} status={member.status}")
-            if member.status in ("left", "kicked"):
-                logging.info(f"[OBUNA] user={user_id} {ch['chat_id']}ga obuna emas -- BLOKLANDI.")
-                return False
-        except TelegramBadRequest as e:
-            # bot kanalga admin qilib qo'yilmagan yoki chat topilmadi -- bloklamaymiz
-            logging.warning(f"[OBUNA] kanal={ch['chat_id']} tekshirib bo'lmadi: {e} -- o'tkazib yuborildi.")
-            continue
+
+    # Kanallarni KETMA-KET emas, PARALLEL tekshiramiz -- bir nechta kanal
+    # bo'lganda javob tezligi sezilarli yaxshilanadi (masalan 2 kanal uchun
+    # ~2x tezroq, chunki ikkalasi bir vaqtda so'raladi).
+    results = await asyncio.gather(*(_check_one_channel(bot, ch, user_id) for ch in channels))
+    if not all(results):
+        return False
+
     logging.info(f"[OBUNA] user={user_id} barcha kanallarga obuna -- O'TDI.")
     return True
 
