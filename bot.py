@@ -52,6 +52,22 @@ async def main():
     # uchun). Bu router'lar ulanishidan OLDIN chaqirilishi kerak.
     safe_photo_patch.apply()
 
+    # BIR MARTALIK TOZALASH: Render Environment bo'limida CLEAR_ASSET_CACHE=1
+    # qo'shilgan bo'lsa, eski (endi yaroqsiz) keshlangan rasm file_id lari
+    # bazadan o'chiriladi -- shunda bot ularni qaytadan lokal fayldan yuklab,
+    # YANGI (joriy tokenga mos) file_id saqlaydi. Muammo hal bo'lgach, bu
+    # o'zgaruvchini Render Environment'dan o'chirib qo'yish tavsiya etiladi
+    # (majburiy emas -- qoldirilsa ham zarar keltirmaydi, faqat har safar
+    # ishga tushganda keraksiz DELETE so'rovi bajariladi).
+    if os.getenv("CLEAR_ASSET_CACHE") == "1":
+        try:
+            from database import get_client
+            client = get_client()
+            await client.execute("DELETE FROM bot_assets")
+            logging.info("✅ [CLEAR_ASSET_CACHE] bot_assets jadvali tozalandi.")
+        except Exception:
+            logging.exception("❌ [CLEAR_ASSET_CACHE] bot_assets tozalanmadi:")
+
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
 
