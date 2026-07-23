@@ -42,7 +42,20 @@ def apply():
         )
         return
 
+    # MUHIM: handlers/user.py da "send_section_photo = send_cached_photo" kabi
+    # bitta ORIGINAL funksiyaga bir nechta nom (alias) berilgan bo'lishi mumkin.
+    # Bunday aliaslar modul yuklanganda funksiya OBYEKTINING o'ziga bog'lanadi,
+    # shuning uchun keyinroq faqat "send_cached_photo" nomini almashtirish
+    # boshqa aliaslarni (masalan send_section_photo) tuzatmaydi -- ular hamon
+    # eski, patchlanmagan funksiyaga ishora qilib qolaveradi. Shu sabab BARCHA
+    # nomlarni topib, bir xil xavfsiz versiya bilan almashtiramiz.
     original_func = user_module.send_cached_photo
+    alias_names = [
+        name for name, value in vars(user_module).items()
+        if callable(value) and value is original_func
+    ]
+    if "send_cached_photo" not in alias_names:
+        alias_names.append("send_cached_photo")
 
     async def safe_send_cached_photo(message, key, path, caption, reply_markup=None):
         try:
@@ -70,8 +83,11 @@ def apply():
                 # Rasmsiz bo'lsa ham, foydalanuvchi kamida matnli javob olsin.
                 return await message.answer(caption, reply_markup=reply_markup)
 
-    user_module.send_cached_photo = safe_send_cached_photo
-    logging.info("[safe_photo_patch] send_cached_photo xavfsiz versiya bilan almashtirildi.")
+    for name in alias_names:
+        setattr(user_module, name, safe_send_cached_photo)
+    logging.info(
+        f"[safe_photo_patch] Xavfsiz versiya bilan almashtirildi: {', '.join(alias_names)}"
+    )
 
 
 async def _try_update_cached_asset(key: str, sent_message):
@@ -89,7 +105,7 @@ async def _try_update_cached_asset(key: str, sent_message):
     if not new_file_id:
         return
 
-    for fn_name in ("set_asset", "set_bot_asset", "save_asset", "update_asset", "cache_asset"):
+    for fn_name in ("set_asset_file_id", "set_asset", "set_bot_asset", "save_asset", "update_asset", "cache_asset"):
         fn = getattr(db, fn_name, None)
         if callable(fn):
             try:
