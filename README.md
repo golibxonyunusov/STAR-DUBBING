@@ -139,4 +139,4 @@ qidiriladi.
 
 git add .
 git commit -m "to'liq tugatish".
-git push
+git push 

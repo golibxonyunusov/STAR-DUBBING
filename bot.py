@@ -12,6 +12,7 @@ from database import init_db
 from handlers import admin, user
 import web as website
 import monthly_rewards
+import safe_photo_patch
 
 
 async def start_web_server(bot: Bot):
@@ -45,6 +46,11 @@ async def main():
         )
 
     await init_db()
+
+    # Eski bot tokeniga tegishli file_id lar yaroqsiz bo'lib qolgan bo'lsa,
+    # avtomatik ravishda lokal fayldan qayta yuklaydi (bot yiqilib qolmasin
+    # uchun). Bu router'lar ulanishidan OLDIN chaqirilishi kerak.
+    safe_photo_patch.apply()
 
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
