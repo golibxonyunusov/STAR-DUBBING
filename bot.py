@@ -151,7 +151,10 @@ async def main():
 
     asyncio.create_task(monthly_rewards.monthly_rewards_loop(bot))
 
-    await bot.delete_webhook(drop_pending_updates=True)
+    # MUHIM: drop_pending_updates=False -- aks holda, bot Render'da "uxlab
+    # qolgan" (spin-down) paytda kelgan xabarlar (masalan /start) bot
+    # uyg'ongach BUTUNLAY o'chirilib, hech qanday javob berilmay qoladi.
+    await bot.delete_webhook(drop_pending_updates=False)
     await dp.start_polling(bot)
 
 
