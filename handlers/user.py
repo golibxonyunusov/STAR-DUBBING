@@ -435,7 +435,7 @@ async def render_anime_card(message: Message, anime_id: int, user_id: int) -> bo
     if anime["vip_only"] and not vip:
         await message.answer(
             f"🔒 <b>{anime['title']}</b>\n\n"
-            "Bu anime faqat 👑 <b>VIP</b> foydalanuvchilar uchun ochiq.\n"
+            "Bu anime faqat 👑 <b>VIP</b> foydalanuvchilar uchun ochiq. \n"
             "VIP status olish uchun @rudeus_1111 bilan bog'laning."
         )
         return True
