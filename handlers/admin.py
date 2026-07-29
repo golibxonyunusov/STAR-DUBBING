@@ -1,10 +1,13 @@
+import logging
+
 from aiogram import Router, F, Bot
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
 import database as db
-from config import ADMIN_IDS
+from config import ADMIN_IDS, ANNOUNCE_CHANNEL_ID
 from states import AddAnime, AddEpisode, DeleteAnime, Broadcast, AddChannel, GrantVip, RemoveVip, LinkEpisode
 from keyboards import (
     admin_menu_kb,
@@ -75,8 +78,29 @@ async def add_anime_year(message: Message, state: FSMContext):
     await message.answer("🖼 Anime posterini (rasm) yuboring:")
 
 
+async def _announce_new_anime(bot: Bot, anime_id: int, data: dict, poster_file_id: str):
+    """Yangi qo'shilgan animeni (poster + ma'lumotlar bilan) e'lon kanaliga
+    yuboradi. Xatolik bo'lsa (masalan bot kanalda admin emas), faqat logga
+    yoziladi -- admin panel ishlashida xalaqit bermaydi."""
+    if not ANNOUNCE_CHANNEL_ID:
+        return
+    caption = (
+        f"🆕 <b>Yangi anime qo'shildi!</b>\n\n"
+        f"🎬 <b>{data['title']}</b>\n"
+        f"📅 Yil: {data['year']}\n"
+        f"🎭 Janr: {data['genre']}\n\n"
+        f"{data['description']}\n\n"
+        f"🆔 Kod: <code>{anime_id}</code>\n"
+        f"📥 Botda tomosha qilish uchun botga o'ting va shu kodni yuboring."
+    )
+    try:
+        await bot.send_photo(chat_id=ANNOUNCE_CHANNEL_ID, photo=poster_file_id, caption=caption)
+    except TelegramBadRequest as e:
+        logging.warning(f"[ANIME E'LONI] Kanalga yuborib bo'lmadi ({ANNOUNCE_CHANNEL_ID}): {e}")
+
+
 @router.message(AddAnime.poster, F.photo)
-async def add_anime_poster(message: Message, state: FSMContext):
+async def add_anime_poster(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     poster_file_id = message.photo[-1].file_id
 
@@ -93,6 +117,8 @@ async def add_anime_poster(message: Message, state: FSMContext):
         f"Endi \"🎬 Epizod qo'shish\" orqali epizodlar qo'shishingiz mumkin.",
         reply_markup=admin_menu_kb(),
     )
+
+    await _announce_new_anime(bot, anime_id, data, poster_file_id)
 
 
 @router.message(AddAnime.poster)

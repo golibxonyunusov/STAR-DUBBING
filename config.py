@@ -75,11 +75,14 @@ BOT_USERNAME = os.getenv("BOT_USERNAME", "").lstrip("@").strip()
 # Bot shu domen asosida "veb-profilga kirish" havolalarini tuzadi.
 SITE_URL = os.getenv("SITE_URL", "https://star-dubbing.onrender.com").rstrip("/")
 
-# ESKI USUL (endi ishlatilmaydi): avval sayt videolarni OCHIQ Telegram kanali
-# postidan Telegram widget orqali ko'rsatar edi. Endi har bir epizod uchun
-# saytga ALOHIDA to'g'ridan-to'g'ri video havolasi qo'shiladi (admin panel
-# orqali, "episodes.web_video_url" ustunida saqlanadi) -- shuning uchun bu
-# o'zgaruvchi endi kerak emas va olib tashlandi.
+# --- YANGI ANIME E'LONI KANALI ---
+# Admin panel orqali yangi anime qo'shilganda (poster + ma'lumotlar bilan)
+# avtomatik e'lon qilinadigan kanal. Raqamli chat_id ishlatilishi tavsiya
+# etiladi (username'ga qaraganda ishonchliroq). Bot shu kanalda ADMIN
+# bo'lishi shart, aks holda e'lon yuborib bo'lmaydi (xato faqat logda
+# ko'rinadi, admin panel ishlashda davom etadi).
+# .env faylida ANNOUNCE_CHANNEL_ID=-1003993368512 kabi kiritiladi.
+ANNOUNCE_CHANNEL_ID = os.getenv("ANNOUNCE_CHANNEL_ID", "-1003993368512")
 
 # Majburiy obuna kanallari — to'g'ridan-to'g'ri shu yerda (kodda) belgilanadi.
 # chat_id: kanal username (@ bilan) yoki -100... ko'rinishidagi ID -- foydalanuvchiga
