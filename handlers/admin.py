@@ -4,10 +4,10 @@ from aiogram import Router, F, Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 import database as db
-from config import ADMIN_IDS, ANNOUNCE_CHANNEL_ID
+from config import ADMIN_IDS, ANNOUNCE_CHANNEL_ID, BOT_USERNAME
 from states import AddAnime, AddEpisode, DeleteAnime, Broadcast, AddChannel, GrantVip, RemoveVip, LinkEpisode
 from keyboards import (
     admin_menu_kb,
@@ -93,8 +93,17 @@ async def _announce_new_anime(bot: Bot, anime_id: int, data: dict, poster_file_i
         f"🆔 Kod: <code>{anime_id}</code>\n"
         f"📥 Botda tomosha qilish uchun botga o'ting va shu kodni yuboring."
     )
+    kb = None
+    if BOT_USERNAME:
+        deep_link = f"https://t.me/{BOT_USERNAME}?start=anime_{anime_id}"
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✨ Tomosha qilish ✨", url=deep_link)
+        ]])
+
     try:
-        await bot.send_photo(chat_id=ANNOUNCE_CHANNEL_ID, photo=poster_file_id, caption=caption)
+        await bot.send_photo(
+            chat_id=ANNOUNCE_CHANNEL_ID, photo=poster_file_id, caption=caption, reply_markup=kb
+        )
     except TelegramBadRequest as e:
         logging.warning(f"[ANIME E'LONI] Kanalga yuborib bo'lmadi ({ANNOUNCE_CHANNEL_ID}): {e}")
 
