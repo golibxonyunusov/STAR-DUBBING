@@ -101,9 +101,10 @@ async def _announce_new_anime(bot: Bot, anime_id: int, data: dict, poster_file_i
         ]])
 
     try:
-        await bot.send_photo(
+        sent = await bot.send_photo(
             chat_id=ANNOUNCE_CHANNEL_ID, photo=poster_file_id, caption=caption, reply_markup=kb
         )
+        await db.set_announce_message(anime_id, sent.chat.id, sent.message_id)
     except TelegramBadRequest as e:
         logging.warning(f"[ANIME E'LONI] Kanalga yuborib bo'lmadi ({ANNOUNCE_CHANNEL_ID}): {e}")
 
@@ -331,9 +332,18 @@ async def delete_anime_confirm(call: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "confirm_delanime")
-async def delete_anime_do(call: CallbackQuery, state: FSMContext):
+async def delete_anime_do(call: CallbackQuery, state: FSMContext, bot: Bot):
     data = await state.get_data()
-    await db.delete_anime(data["anime_id"])
+    anime_id = data["anime_id"]
+
+    anime = await db.get_anime(anime_id)
+    if anime and anime["announce_chat_id"] and anime["announce_msg_id"]:
+        try:
+            await bot.delete_message(chat_id=anime["announce_chat_id"], message_id=anime["announce_msg_id"])
+        except TelegramBadRequest as e:
+            logging.warning(f"[ANIME O'CHIRISH] Kanaldagi xabarni o'chirib bo'lmadi: {e}")
+
+    await db.delete_anime(anime_id)
     await state.clear()
     await call.message.answer("🗑 Anime o'chirildi.", reply_markup=admin_menu_kb())
     await call.answer()
