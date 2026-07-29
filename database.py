@@ -187,6 +187,17 @@ async def init_db():
         await client.execute("ALTER TABLE anime ADD COLUMN views INTEGER DEFAULT 0")
     except Exception:
         pass
+    # announce_chat_id / announce_msg_id -- anime qo'shilganda e'lon kanaliga
+    # yuborilgan xabarning chat_id va message_id'sini saqlaydi. Shu orqali
+    # anime o'chirilganda, kanaldagi o'sha xabar ham avtomatik o'chiriladi.
+    try:
+        await client.execute("ALTER TABLE anime ADD COLUMN announce_chat_id TEXT")
+    except Exception:
+        pass
+    try:
+        await client.execute("ALTER TABLE anime ADD COLUMN announce_msg_id INTEGER")
+    except Exception:
+        pass
 
 
 # ---------- USERS ----------
@@ -254,6 +265,17 @@ async def delete_anime(anime_id: int):
     client = get_client()
     await client.execute("DELETE FROM episodes WHERE anime_id = ?", (anime_id,))
     await client.execute("DELETE FROM anime WHERE id = ?", (anime_id,))
+
+
+async def set_announce_message(anime_id: int, chat_id, message_id: int):
+    """Anime e'lon kanaliga yuborilgan xabarning chat_id/message_id sini
+    saqlaydi -- anime keyinchalik o'chirilganda, o'sha xabarni ham
+    kanaldan o'chirish uchun kerak bo'ladi."""
+    client = get_client()
+    await client.execute(
+        "UPDATE anime SET announce_chat_id = ?, announce_msg_id = ? WHERE id = ?",
+        (str(chat_id), message_id, anime_id),
+    )
 
 
 def _normalize_search_text(text: str) -> str:
