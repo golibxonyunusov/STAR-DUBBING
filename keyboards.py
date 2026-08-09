@@ -146,6 +146,16 @@ def confirm_kb(yes_cb, no_cb):
     ]])
 
 
+def cancel_kb() -> ReplyKeyboardMarkup:
+    """FSM jarayonlarida (anime qo'shish va h.k.) ko'rinadigan bekor qilish
+    tugmasi -- admin adashib boshlagan jarayonni istalgan bosqichda
+    to'xtatishi mumkin."""
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="❌ Bekor qilish")]],
+        resize_keyboard=True,
+    )
+
+
 # ---------- VIP ----------
 
 def vip_admin_menu_kb():

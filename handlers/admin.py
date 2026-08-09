@@ -2,7 +2,7 @@ import logging
 
 from aiogram import Router, F, Bot
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -14,6 +14,7 @@ from keyboards import (
     main_menu_kb,
     choose_anime_kb,
     confirm_kb,
+    cancel_kb,
     vip_admin_menu_kb,
     vip_duration_kb,
     anime_vip_toggle_kb,
@@ -47,35 +48,44 @@ async def add_anime_start(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     await state.set_state(AddAnime.title)
-    await message.answer("📝 Anime nomini kiriting:")
+    await message.answer("📝 Anime nomini kiriting:", reply_markup=cancel_kb())
+
+
+@router.message(StateFilter(AddAnime), F.text == "❌ Bekor qilish")
+async def add_anime_cancel(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("❌ Bekor qilindi.", reply_markup=admin_menu_kb())
 
 
 @router.message(AddAnime.title)
 async def add_anime_title(message: Message, state: FSMContext):
     await state.update_data(title=message.text)
     await state.set_state(AddAnime.description)
-    await message.answer("📝 Anime haqida qisqacha ma'lumot (tavsif) kiriting:")
+    await message.answer("📝 Anime haqida qisqacha ma'lumot (tavsif) kiriting:", reply_markup=cancel_kb())
 
 
 @router.message(AddAnime.description)
 async def add_anime_description(message: Message, state: FSMContext):
     await state.update_data(description=message.text)
     await state.set_state(AddAnime.genre)
-    await message.answer("🎭 Janr(lar)ni kiriting (vergul bilan, masalan: Action, Fantastika):")
+    await message.answer(
+        "🎭 Janr(lar)ni kiriting (vergul bilan, masalan: Action, Fantastika):",
+        reply_markup=cancel_kb(),
+    )
 
 
 @router.message(AddAnime.genre)
 async def add_anime_genre(message: Message, state: FSMContext):
     await state.update_data(genre=message.text)
     await state.set_state(AddAnime.year)
-    await message.answer("📅 Chiqarilgan yilini kiriting:")
+    await message.answer("📅 Chiqarilgan yilini kiriting:", reply_markup=cancel_kb())
 
 
 @router.message(AddAnime.year)
 async def add_anime_year(message: Message, state: FSMContext):
     await state.update_data(year=message.text)
     await state.set_state(AddAnime.poster)
-    await message.answer("🖼 Anime posterini (rasm) yuboring:")
+    await message.answer("🖼 Anime posterini (rasm) yuboring:", reply_markup=cancel_kb())
 
 
 async def _announce_new_anime(bot: Bot, anime_id: int, data: dict, poster_file_id: str):
