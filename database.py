@@ -311,6 +311,32 @@ async def is_user_blocked(user_id: int) -> bool:
     return bool(rs.rows and rs.rows[0][0])
 
 
+async def search_users(query: str, limit: int = 20):
+    """Username, ism yoki Telegram ID bo'yicha foydalanuvchi qidiradi --
+    qidiruv so'zining istalgan qismi mos kelsa ham topiladi (admin panel --
+    '👥 Foydalanuvchilar' → '🔍 Qidirish' bo'limi uchun)."""
+    normalized = _normalize_search_text(query)
+    client = get_client()
+    rs = await client.execute(
+        """
+        SELECT user_id, username, full_name, blocked FROM users
+        WHERE LOWER(COALESCE(username, '')) LIKE ? ESCAPE '\\'
+           OR LOWER(COALESCE(full_name, '')) LIKE ? ESCAPE '\\'
+           OR CAST(user_id AS TEXT) LIKE ? ESCAPE '\\'
+        ORDER BY
+            CASE WHEN LOWER(COALESCE(username, '')) LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END,
+            joined_at DESC
+        LIMIT ?
+        """,
+        (
+            f"%{normalized}%", f"%{normalized}%", f"%{normalized}%",
+            f"{normalized}%",
+            limit,
+        ),
+    )
+    return [dict(zip(rs.columns, row)) for row in rs.rows]
+
+
 # ---------- ANIME ----------
 
 async def add_anime(title, description, poster_file_id, genre, year, vip_only: bool = False) -> int:

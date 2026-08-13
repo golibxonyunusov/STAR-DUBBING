@@ -160,10 +160,13 @@ def cancel_kb() -> ReplyKeyboardMarkup:
 # ---------- FOYDALANUVCHILAR (admin: ro'yxat / yozish / bloklash) ----------
 
 def users_list_kb(users, offset, total) -> InlineKeyboardMarkup:
-    """Birinchi qatorda har doim '🌐 HAMMAGA (ALL)' tugmasi -- bosilsa
-    broadcast (barchaga xabar) jarayoni boshlanadi. Keyin har bir
-    foydalanuvchi username (yoki ism/ID) bilan alohida tugma sifatida."""
-    rows = [[InlineKeyboardButton(text="🌐 HAMMAGA (ALL) — E'lon qilish", callback_data="users_all")]]
+    """Birinchi qatorda har doim '🌐 HAMMAGA (ALL)' va '🔍 Qidirish' tugmalari --
+    ALL bosilsa broadcast boshlanadi, Qidirish bosilsa ism/username so'raladi.
+    Keyin har bir foydalanuvchi username (yoki ism/ID) bilan alohida tugma sifatida."""
+    rows = [
+        [InlineKeyboardButton(text="🌐 HAMMAGA (ALL) — E'lon qilish", callback_data="users_all")],
+        [InlineKeyboardButton(text="🔍 Ism/username bo'yicha qidirish", callback_data="users_search")],
+    ]
 
     for u in users:
         if u["username"]:
@@ -184,6 +187,27 @@ def users_list_kb(users, offset, total) -> InlineKeyboardMarkup:
     if nav:
         rows.append(nav)
 
+    rows.append([InlineKeyboardButton(text="🚪 Chiqish", callback_data="users_exit")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def users_search_results_kb(users) -> InlineKeyboardMarkup:
+    """Qidiruv natijalari -- har bir topilgan foydalanuvchi tugma sifatida,
+    ostida qayta qidirish, ro'yxatga qaytish va chiqish tugmalari."""
+    rows = []
+    for u in users:
+        if u["username"]:
+            label = f"@{u['username']}"
+        elif u["full_name"]:
+            label = u["full_name"]
+        else:
+            label = str(u["user_id"])
+        if u["blocked"]:
+            label = f"🚫 {label}"
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"userinfo_{u['user_id']}")])
+
+    rows.append([InlineKeyboardButton(text="🔍 Qayta qidirish", callback_data="users_search")])
+    rows.append([InlineKeyboardButton(text="⬅️ Ro'yxatga qaytish", callback_data="userspage_0")])
     rows.append([InlineKeyboardButton(text="🚪 Chiqish", callback_data="users_exit")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

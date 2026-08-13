@@ -57,3 +57,7 @@ class SubmitDub(StatesGroup):
 
 class WriteToUser(StatesGroup):
     message = State()
+
+
+class SearchUser(StatesGroup):
+    query = State()

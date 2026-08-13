@@ -18,6 +18,7 @@ from states import (
     RemoveVip,
     LinkEpisode,
     WriteToUser,
+    SearchUser,
 )
 from keyboards import (
     admin_menu_kb,
@@ -31,6 +32,7 @@ from keyboards import (
     users_list_kb,
     user_actions_kb,
     exit_only_kb,
+    users_search_results_kb,
 )
 
 router = Router()
@@ -481,6 +483,32 @@ async def users_all_broadcast(call: CallbackQuery, state: FSMContext):
         "📢 Barchaga bir vaqtda yuboriladigan xabarni kiriting (matn, rasm, video bo'lishi mumkin):"
     )
     await call.answer()
+
+
+@router.callback_query(F.data == "users_search")
+async def users_search_start(call: CallbackQuery, state: FSMContext):
+    await state.set_state(SearchUser.query)
+    await call.message.answer(
+        "🔍 Foydalanuvchining ismi, username'i yoki ID raqamining bir qismini yozing:"
+    )
+    await call.answer()
+
+
+@router.message(SearchUser.query)
+async def users_search_results(message: Message, state: FSMContext):
+    await state.clear()
+    query = message.text.strip()
+    results = await db.search_users(query, limit=20)
+    if not results:
+        await message.answer(
+            f"❌ \"{query}\" bo'yicha hech kim topilmadi.",
+            reply_markup=users_search_results_kb([]),
+        )
+        return
+    await message.answer(
+        f"🔍 \"{query}\" bo'yicha topildi: {len(results)} ta\n\nKerakli foydalanuvchini tanlang:",
+        reply_markup=users_search_results_kb(results),
+    )
 
 
 @router.callback_query(F.data.startswith("userinfo_"))
