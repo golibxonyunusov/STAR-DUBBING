@@ -667,36 +667,6 @@ STYLES = """
     font-size: 11px; color: var(--vip); border: 1px solid var(--vip); border-radius: 20px;
     padding: 3px 9px; font-family: 'IBM Plex Mono', monospace;
   }
-  .chat-log {
-    max-width: 720px; max-height: 480px; overflow-y: auto;
-    display: flex; flex-direction: column; gap: 10px;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-    padding: 20px;
-  }
-  .chat-bubble {
-    max-width: 78%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px;
-    line-height: 1.45; word-break: break-word;
-  }
-  .chat-bubble.in {
-    align-self: flex-start; background: var(--panel-hi); border: 1px solid var(--line);
-    border-bottom-left-radius: 4px;
-  }
-  .chat-bubble.out {
-    align-self: flex-end; background: linear-gradient(135deg, var(--violet-deep), var(--blue));
-    color: #fff; border-bottom-right-radius: 4px;
-  }
-  .chat-bubble .chat-text { white-space: pre-wrap; }
-  .chat-bubble .chat-time { font-size: 10px; opacity: .65; margin-top: 4px; font-family: 'IBM Plex Mono', monospace; }
-  .chat-send-form {
-    max-width: 720px; display: flex; gap: 10px; margin-top: 14px; align-items: flex-end;
-  }
-  .chat-send-form textarea {
-    flex: 1; min-height: 46px; max-height: 140px; resize: vertical;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-    padding: 12px 14px; color: var(--ink); font-size: 13.5px; font-family: inherit;
-  }
-  .chat-send-form textarea:focus { outline: none; border-color: var(--violet); }
-  .chat-send-form button { white-space: nowrap; }
 
   /* ---- statik sahifalar (Biz haqimizda va h.k.) ---- */
   .static-page { max-width: 720px; margin: 10px auto 0; }
@@ -2321,16 +2291,6 @@ async def admin_panel_api_search(request):
     ])
 
 
-def _chat_bubble_html(m) -> str:
-    cls = "out" if m["direction"] == "out" else "in"
-    time_label = (m["created_at"] or "")[:16].replace("T", " ")
-    text = html.escape(m["content"] or "")
-    return (
-        f'<div class="chat-bubble {cls}"><div class="chat-text">{text}</div>'
-        f'<div class="chat-time">{time_label}</div></div>'
-    )
-
-
 async def admin_panel_user_detail(request):
     if not is_admin_web(request):
         return web.HTTPFound("/panel")
@@ -2362,12 +2322,6 @@ async def admin_panel_user_detail(request):
     )
     block_btn_label = "✅ Blokdan chiqarish" if blocked else "🚫 Bloklash"
 
-    history = await db.get_message_history(user_id, limit=150)
-    chat_html = (
-        "".join(_chat_bubble_html(m) for m in history)
-        if history else '<p class="empty" style="padding:40px 0">Hali yozishmalar yo\'q.</p>'
-    )
-
     body = f"""
 <h2 class="section"><span class="ic">&#128100;</span> Foydalanuvchi profili</h2>
 <div class="profile-card">
@@ -2386,52 +2340,11 @@ async def admin_panel_user_detail(request):
   </form>
   <a href="/panel/foydalanuvchilar" class="cta-secondary">⬅️ Ro'yxatga qaytish</a>
 </div>
-
-<h2 class="section"><span class="ic">&#128172;</span> Yozishmalar tarixi</h2>
-<div class="chat-log" id="chat-log">
-{chat_html}
-</div>
-<form method="post" action="/panel/foydalanuvchi/{info['user_id']}/yozish" class="chat-send-form">
-  <textarea name="text" placeholder="Xabar yozing..." required></textarea>
-  <button type="submit" class="cta-primary" style="justify-content:center">
-    <span class="play">➤</span> Yuborish
-  </button>
-</form>
-<script>
-(function () {{
-  var log = document.getElementById('chat-log');
-  if (log) log.scrollTop = log.scrollHeight;
-}})();
-</script>
 """
     return web.Response(
         text=base_page("Admin panel — Profil", body, current_user=current_user, theme=theme),
         content_type="text/html",
     )
-
-
-async def admin_panel_send_message(request):
-    """/panel dagi profil sahifasidagi formadan yuborilgan xabarni bot
-    orqali to'g'ridan-to'g'ri foydalanuvchiga jo'natadi va tarixga yozadi."""
-    if not is_admin_web(request):
-        return web.HTTPFound("/panel")
-    try:
-        user_id = int(request.match_info["id"])
-    except ValueError:
-        return web.HTTPFound("/panel/foydalanuvchilar")
-
-    data = await request.post()
-    text = str(data.get("text", "")).strip()
-    if text:
-        bot = request.app.get("bot")
-        try:
-            if bot:
-                await bot.send_message(chat_id=user_id, text=text)
-            await db.log_message(user_id, "out", text)
-        except Exception:
-            pass  # foydalanuvchi botni bloklagan yoki xato bo'lishi mumkin -- sahifa baribir ochiladi
-
-    return web.HTTPFound(f"/panel/foydalanuvchi/{user_id}")
 
 
 async def admin_panel_toggle_block(request):
@@ -2481,5 +2394,4 @@ def create_app(bot) -> web.Application:
     app.router.add_get("/panel/api/qidiruv", admin_panel_api_search)
     app.router.add_get("/panel/foydalanuvchi/{id}", admin_panel_user_detail)
     app.router.add_post("/panel/foydalanuvchi/{id}/blok", admin_panel_toggle_block)
-    app.router.add_post("/panel/foydalanuvchi/{id}/yozish", admin_panel_send_message)
     return app
