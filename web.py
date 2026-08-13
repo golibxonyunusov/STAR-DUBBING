@@ -17,6 +17,7 @@ yulduzli fon (twinkle + otar yulduz animatsiyasi), "konstellyatsiya"
 uslubidagi bo'lim ajratgichlari va gradientli STAR/DUBBING wordmark.
 """
 
+import hashlib
 import html
 import json
 import random
@@ -33,6 +34,24 @@ ACCENT = "#9b8cff"
 
 SESSION_COOKIE = "sid"
 THEME_COOKIE = "theme"
+
+# ---------- ADMIN PANEL (parol bilan himoyalangan, /panel) ----------
+# Bu -- foydalanuvchi hisobiga bog'liq bo'lmagan, alohida "admin kaliti"
+# bilan kiriladigan bo'lim. Parol to'g'ri kiritilsa, brauzerga bir necha
+# soatga amal qiladigan cookie o'rnatiladi (server tomonda sessiya
+# saqlanmaydi -- cookie qiymati parol+tuzdan olingan hash, shuning uchun
+# server qayta ishga tushsa ham amal qilaveradi).
+ADMIN_PANEL_PASSWORD = "7527"
+ADMIN_PANEL_COOKIE = "admin_key"
+_ADMIN_PANEL_SALT = "star_dubbing_admin_panel_v1"
+
+
+def _admin_panel_token() -> str:
+    return hashlib.sha256(f"{ADMIN_PANEL_PASSWORD}:{_ADMIN_PANEL_SALT}".encode()).hexdigest()
+
+
+def is_admin_web(request) -> bool:
+    return request.cookies.get(ADMIN_PANEL_COOKIE) == _admin_panel_token()
 
 
 # ---------- SESSIYA / PROFIL YORDAMCHILARI ----------
@@ -619,6 +638,35 @@ STYLES = """
     max-width: 480px; text-align: center; padding: 60px 20px;
   }
   .login-prompt .cta-primary { margin-top: 22px; }
+
+  /* ---- admin panel (/panel) ---- */
+  .admin-login-form { margin-top: 22px; display: flex; flex-direction: column; gap: 4px; }
+  .admin-login-form input {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 13px 16px; color: var(--ink); font-size: 14px; text-align: center;
+    font-family: 'IBM Plex Mono', monospace; width: 100%;
+  }
+  .admin-login-form input:focus { outline: none; border-color: var(--violet); }
+  .admin-search-wrap { max-width: 480px; margin: 0 0 20px; }
+  .admin-search-wrap input {
+    width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 16px; color: var(--ink); font-size: 13.5px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .admin-search-wrap input:focus { outline: none; border-color: var(--violet); }
+  .admin-users-list { display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
+  .admin-user-row {
+    display: flex; align-items: center; gap: 14px; padding: 13px 18px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    transition: border-color .2s, transform .2s;
+  }
+  .admin-user-row:hover { border-color: var(--violet); transform: translateX(3px); }
+  .admin-user-name { font-weight: 600; font-size: 14px; flex: 1; }
+  .admin-user-id { font-size: 12px; color: var(--muted); }
+  .admin-blocked-badge {
+    font-size: 11px; color: var(--vip); border: 1px solid var(--vip); border-radius: 20px;
+    padding: 3px 9px; font-family: 'IBM Plex Mono', monospace;
+  }
 
   /* ---- statik sahifalar (Biz haqimizda va h.k.) ---- */
   .static-page { max-width: 720px; margin: 10px auto 0; }
@@ -1261,6 +1309,7 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None,
     <a href="/vip">VIP</a>
     <a href="/savollar">Savol-javob</a>
     <a href="/aloqa">Aloqa</a>
+    <a href="/panel" style="opacity:.55">🔐 Admin panel</a>
   </div>
 </footer>
 <div id="ai-backdrop" class="ai-backdrop"></div>
@@ -2065,6 +2114,256 @@ async def ping(request):
     return web.Response(text="STAR DUBBING bot va sayt ishlayapti ✅")
 
 
+# ==================== ADMIN PANEL (/panel) ====================
+# Parol bilan himoyalangan, botning admin ekranidagi "👥 Foydalanuvchilar"
+# bo'limi bilan bir xil ma'lumotni brauzerda ko'rsatadi: barcha
+# foydalanuvchilar ro'yxati, ism/username/ID bo'yicha jonli qidiruv va
+# har bir foydalanuvchining to'liq profili (VIP, ko'rgan qismlar,
+# yuklagan dublyajlar, bloklanganmi).
+
+async def admin_panel_login(request):
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
+
+    if is_admin_web(request):
+        return web.HTTPFound("/panel/foydalanuvchilar")
+
+    error_html = ""
+    if request.query.get("xato") == "1":
+        error_html = (
+            '<p style="color:var(--vip);font-size:13px;margin-top:14px">'
+            '❌ Parol noto\'g\'ri, qayta urinib ko\'ring.</p>'
+        )
+
+    body = f"""
+<div class="login-prompt">
+  <h2 class="section" style="justify-content:center">&#128274; Admin panel</h2>
+  <p class="empty" style="padding:10px 0 0">Bu bo'lim faqat administratorlar uchun. Kirish uchun parolni kiriting.</p>
+  <form method="post" action="/panel" class="admin-login-form">
+    <input type="password" name="password" placeholder="Parol" autofocus required>
+    <button type="submit" class="cta-primary" style="width:100%;justify-content:center;margin-top:14px">
+      <span class="play">🔑</span> Kirish
+    </button>
+  </form>
+  {error_html}
+</div>
+"""
+    return web.Response(
+        text=base_page("Admin panel", body, current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
+
+
+async def admin_panel_login_post(request):
+    data = await request.post()
+    password = str(data.get("password", ""))
+    if password == ADMIN_PANEL_PASSWORD:
+        resp = web.HTTPFound("/panel/foydalanuvchilar")
+        resp.set_cookie(
+            ADMIN_PANEL_COOKIE, _admin_panel_token(),
+            max_age=60 * 60 * 12, httponly=True, samesite="Lax",
+        )
+        return resp
+    return web.HTTPFound("/panel?xato=1")
+
+
+async def admin_panel_logout(request):
+    resp = web.HTTPFound("/panel")
+    resp.del_cookie(ADMIN_PANEL_COOKIE)
+    return resp
+
+
+def _admin_user_row_html(u) -> str:
+    if u["username"]:
+        label = f"@{html.escape(u['username'])}"
+    elif u["full_name"]:
+        label = html.escape(u["full_name"])
+    else:
+        label = str(u["user_id"])
+    blocked_badge = '<span class="admin-blocked-badge">🚫 bloklangan</span>' if u["blocked"] else ""
+    return f"""<a class="admin-user-row" href="/panel/foydalanuvchi/{u['user_id']}">
+  <span class="admin-user-name">{label}</span>
+  <span class="admin-user-id mono">ID: {u['user_id']}</span>
+  {blocked_badge}
+</a>"""
+
+
+async def admin_panel_users(request):
+    if not is_admin_web(request):
+        return web.HTTPFound("/panel")
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
+
+    q = request.query.get("q", "").strip()
+    offset = int(request.query.get("offset", 0) or 0)
+    total = await db.get_users_count()
+
+    if q:
+        rows = await db.search_users(q, limit=50)
+        list_html = (
+            "".join(_admin_user_row_html(u) for u in rows)
+            if rows else '<p class="empty">Hech kim topilmadi.</p>'
+        )
+        pager = ""
+        heading = f'"{html.escape(q)}" bo\'yicha natijalar <span class="count">{len(rows)}</span>'
+    else:
+        rows = await db.get_users_page(offset=offset, limit=PAGE_SIZE)
+        list_html = (
+            "".join(_admin_user_row_html(u) for u in rows)
+            if rows else '<p class="empty">Hozircha foydalanuvchilar yo\'q.</p>'
+        )
+        pager = pager_html("/panel/foydalanuvchilar", offset, total)
+        heading = f"Barcha foydalanuvchilar <span class=\"count\">{total}</span>"
+
+    body = f"""
+<h2 class="section"><span class="ic">&#128101;</span> {heading}</h2>
+<div class="admin-search-wrap">
+  <input id="admin-search-input" type="text" placeholder="Ism, username yoki ID bo'yicha qidiring..."
+    value="{html.escape(q)}" autocomplete="off">
+</div>
+<div id="admin-users-list" class="admin-users-list">
+{list_html}
+</div>
+{pager}
+<p style="margin-top:30px"><a href="/panel/chiqish" class="cta-secondary">🚪 Chiqish</a></p>
+<script>
+(function () {{
+  var input = document.getElementById('admin-search-input');
+  var list = document.getElementById('admin-users-list');
+  var timer = null;
+
+  function esc(s) {{
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }}
+
+  input.addEventListener('input', function () {{
+    clearTimeout(timer);
+    var q = input.value.trim();
+    timer = setTimeout(function () {{
+      fetch('/panel/api/qidiruv?q=' + encodeURIComponent(q))
+        .then(function (r) {{ return r.json(); }})
+        .then(function (data) {{
+          if (!data.length) {{
+            list.innerHTML = '<p class="empty">Hech kim topilmadi.</p>';
+            return;
+          }}
+          list.innerHTML = data.map(function (u) {{
+            var label = u.username ? ('@' + esc(u.username)) : esc(u.full_name || u.user_id);
+            var blocked = u.blocked ? '<span class="admin-blocked-badge">🚫 bloklangan</span>' : '';
+            return '<a class="admin-user-row" href="/panel/foydalanuvchi/' + u.user_id + '">' +
+              '<span class="admin-user-name">' + label + '</span>' +
+              '<span class="admin-user-id mono">ID: ' + u.user_id + '</span>' + blocked + '</a>';
+          }}).join('');
+        }});
+    }}, 260);
+  }});
+}})();
+</script>
+"""
+    return web.Response(
+        text=base_page("Admin panel — Foydalanuvchilar", body, current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
+
+
+async def admin_panel_api_search(request):
+    """Jonli qidiruv uchun JSON API -- admin yozayotganda ishlaydi (bosh
+    sahifadagi anime qidiruv qanday ishlasa, shunga o'xshab)."""
+    if not is_admin_web(request):
+        return web.json_response({"error": "ruxsat yo'q"}, status=403)
+
+    q = request.query.get("q", "").strip()
+    if q:
+        rows = await db.search_users(q, limit=50)
+    else:
+        rows = await db.get_users_page(offset=0, limit=PAGE_SIZE)
+
+    return web.json_response([
+        {
+            "user_id": u["user_id"],
+            "username": u["username"],
+            "full_name": u["full_name"],
+            "blocked": bool(u["blocked"]),
+        }
+        for u in rows
+    ])
+
+
+async def admin_panel_user_detail(request):
+    if not is_admin_web(request):
+        return web.HTTPFound("/panel")
+    current_user = await get_current_user(request)
+    theme = get_theme(request, current_user)
+
+    try:
+        user_id = int(request.match_info["id"])
+    except ValueError:
+        return web.HTTPFound("/panel/foydalanuvchilar")
+
+    info = await db.get_user_full_info(user_id)
+    if not info:
+        return web.HTTPFound("/panel/foydalanuvchilar")
+
+    username = f"@{html.escape(info['username'])}" if info["username"] else "—"
+    full_name = html.escape(info["full_name"] or "—")
+    joined = (info["joined_at"] or "")[:10] or "—"
+
+    vip_html = '<span class="val vip-yes">❌ Yo\'q</span>'
+    if info["vip"]:
+        muddat = "♾ Umrbod" if not info["vip_expires_at"] else f"✅ {info['vip_expires_at'][:10]} gacha"
+        vip_html = f'<span class="val vip-yes">{muddat}</span>'
+
+    blocked = bool(info["blocked"])
+    status_html = (
+        '<span class="val vip-yes">🚫 Bloklangan</span>' if blocked
+        else '<span class="val" style="color:var(--ok)">✅ Faol</span>'
+    )
+    block_btn_label = "✅ Blokdan chiqarish" if blocked else "🚫 Bloklash"
+
+    body = f"""
+<h2 class="section"><span class="ic">&#128100;</span> Foydalanuvchi profili</h2>
+<div class="profile-card">
+  <div class="profile-row"><span class="lbl">Telegram ID</span><span class="val mono">{info['user_id']}</span></div>
+  <div class="profile-row"><span class="lbl">Username</span><span class="val">{username}</span></div>
+  <div class="profile-row"><span class="lbl">Ism</span><span class="val">{full_name}</span></div>
+  <div class="profile-row"><span class="lbl">A'zo bo'lgan sana</span><span class="val">{joined}</span></div>
+  <div class="profile-row"><span class="lbl">Holati</span>{status_html}</div>
+  <div class="profile-row"><span class="lbl">👑 VIP</span>{vip_html}</div>
+  <div class="profile-row"><span class="lbl">🎬 Ko'rgan epizodlar</span><span class="val">{info['watched_count']}</span></div>
+  <div class="profile-row"><span class="lbl">🎙 Yuklagan dublyajlar</span><span class="val">{info['dubs_count']}</span></div>
+</div>
+<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:22px">
+  <form method="post" action="/panel/foydalanuvchi/{info['user_id']}/blok">
+    <button type="submit" class="cta-secondary">{block_btn_label}</button>
+  </form>
+  <a href="/panel/foydalanuvchilar" class="cta-secondary">⬅️ Ro'yxatga qaytish</a>
+</div>
+"""
+    return web.Response(
+        text=base_page("Admin panel — Profil", body, current_user=current_user, theme=theme),
+        content_type="text/html",
+    )
+
+
+async def admin_panel_toggle_block(request):
+    if not is_admin_web(request):
+        return web.HTTPFound("/panel")
+    try:
+        user_id = int(request.match_info["id"])
+    except ValueError:
+        return web.HTTPFound("/panel/foydalanuvchilar")
+
+    info = await db.get_user_full_info(user_id)
+    if info and info["blocked"]:
+        await db.unblock_user(user_id)
+    else:
+        await db.block_user(user_id)
+
+    return web.HTTPFound(f"/panel/foydalanuvchi/{user_id}")
+
+
 def create_app(bot) -> web.Application:
     app = web.Application(client_max_size=20 * 1024 * 1024)  # AI widget fayl yuklashlari uchun
     app["bot"] = bot
@@ -2088,4 +2387,11 @@ def create_app(bot) -> web.Application:
     app.router.add_get("/profil", profile_page)
     app.router.add_post("/api/profile", api_profile_update)
     app.router.add_post("/api/assistant", api_assistant)
+    app.router.add_get("/panel", admin_panel_login)
+    app.router.add_post("/panel", admin_panel_login_post)
+    app.router.add_get("/panel/chiqish", admin_panel_logout)
+    app.router.add_get("/panel/foydalanuvchilar", admin_panel_users)
+    app.router.add_get("/panel/api/qidiruv", admin_panel_api_search)
+    app.router.add_get("/panel/foydalanuvchi/{id}", admin_panel_user_detail)
+    app.router.add_post("/panel/foydalanuvchi/{id}/blok", admin_panel_toggle_block)
     return app
