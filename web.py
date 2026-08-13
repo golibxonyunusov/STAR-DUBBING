@@ -668,6 +668,46 @@ STYLES = """
     padding: 3px 9px; font-family: 'IBM Plex Mono', monospace;
   }
 
+  /* ---- admin panel: foydalanuvchi bilan yozishmalar (chat) ---- */
+  .chat-box {
+    max-width: 640px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 18px; margin-top: 26px;
+    display: flex; flex-direction: column; gap: 10px;
+    max-height: 460px; overflow-y: auto; scroll-behavior: smooth;
+  }
+  .chat-empty { color: var(--muted); font-size: 13.5px; text-align: center; padding: 20px 0; }
+  .chat-msg {
+    max-width: 78%; padding: 9px 13px; border-radius: 12px; font-size: 13.5px;
+    line-height: 1.45; word-break: break-word; white-space: pre-wrap;
+  }
+  .chat-msg .chat-time {
+    display: block; font-size: 10.5px; color: var(--muted); margin-top: 4px; opacity: .8;
+  }
+  .chat-msg.in {
+    align-self: flex-start; background: var(--panel-hi); border: 1px solid var(--line);
+    border-bottom-left-radius: 3px;
+  }
+  .chat-msg.out {
+    align-self: flex-end; background: linear-gradient(135deg, var(--violet-deep), var(--blue));
+    color: #fff; border-bottom-right-radius: 3px;
+  }
+  .chat-msg.out .chat-time { color: #ffffffb0; }
+  .chat-kind { font-size: 11.5px; opacity: .75; font-style: italic; }
+  .chat-form { max-width: 640px; display: flex; gap: 10px; margin-top: 12px; align-items: flex-end; }
+  .chat-form textarea {
+    flex: 1; resize: none; min-height: 44px; max-height: 140px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 11px 13px; color: var(--ink); font-size: 13.5px; font-family: inherit;
+  }
+  .chat-form textarea:focus { outline: none; border-color: var(--violet); }
+  .chat-form button {
+    background: linear-gradient(135deg, var(--violet-deep), var(--blue)); color: #fff;
+    border: none; border-radius: 8px; padding: 12px 20px; font-weight: 700;
+    font-size: 13px; cursor: pointer; flex-shrink: 0;
+  }
+  .chat-form button:disabled { opacity: .5; cursor: default; }
+  .chat-status { font-size: 12px; color: var(--muted); max-width: 640px; margin-top: 6px; min-height: 15px; }
+
   /* ---- statik sahifalar (Biz haqimizda va h.k.) ---- */
   .static-page { max-width: 720px; margin: 10px auto 0; }
   .static-page p { color: var(--muted); font-size: 14.5px; margin: 0 0 16px; }
@@ -2291,6 +2331,31 @@ async def admin_panel_api_search(request):
     ])
 
 
+_KIND_LABELS = {
+    "photo": "📷 Rasm",
+    "video": "🎥 Video",
+    "document": "📎 Fayl",
+    "voice": "🎙 Ovozli xabar",
+    "video_note": "⭕️ Videoxabar",
+    "sticker": "🩶 Stiker",
+    "other": "📦 Xabar",
+}
+
+
+def _chat_msg_html(m: dict) -> str:
+    direction = "out" if m["direction"] == "out" else "in"
+    text = html.escape(m["text"]) if m["text"] else ""
+    kind = m.get("kind") or "text"
+    if kind != "text":
+        label = _KIND_LABELS.get(kind, "📦 Xabar")
+        text = f'<span class="chat-kind">{label}</span>' + (f"<br>{text}" if text else "")
+    time_str = (m["created_at"] or "")[:16].replace("T", "  ")
+    return (
+        f'<div class="chat-msg {direction}" data-id="{m["id"]}">{text or "&nbsp;"}'
+        f'<span class="chat-time">{time_str}</span></div>'
+    )
+
+
 async def admin_panel_user_detail(request):
     if not is_admin_web(request):
         return web.HTTPFound("/panel")
@@ -2322,6 +2387,13 @@ async def admin_panel_user_detail(request):
     )
     block_btn_label = "✅ Blokdan chiqarish" if blocked else "🚫 Bloklash"
 
+    messages = await db.get_messages(user_id, limit=200)
+    chat_html = (
+        "".join(_chat_msg_html(m) for m in messages)
+        if messages else '<p class="chat-empty">Hozircha yozishmalar yo\'q.</p>'
+    )
+    last_id = messages[-1]["id"] if messages else 0
+
     body = f"""
 <h2 class="section"><span class="ic">&#128100;</span> Foydalanuvchi profili</h2>
 <div class="profile-card">
@@ -2340,11 +2412,167 @@ async def admin_panel_user_detail(request):
   </form>
   <a href="/panel/foydalanuvchilar" class="cta-secondary">⬅️ Ro'yxatga qaytish</a>
 </div>
+
+<h2 class="section" style="margin-top:34px"><span class="ic">&#128172;</span> Yozishmalar</h2>
+<div id="chat-box" class="chat-box">
+{chat_html}
+</div>
+<form id="chat-form" class="chat-form">
+  <textarea id="chat-input" placeholder="Xabar yozing... (bot nomidan yuboriladi)" rows="1"></textarea>
+  <button id="chat-send-btn" type="submit">Yuborish</button>
+</form>
+<div id="chat-status" class="chat-status"></div>
+<script>
+(function () {{
+  var USER_ID = {info['user_id']};
+  var box = document.getElementById('chat-box');
+  var form = document.getElementById('chat-form');
+  var input = document.getElementById('chat-input');
+  var sendBtn = document.getElementById('chat-send-btn');
+  var statusEl = document.getElementById('chat-status');
+  var lastId = {last_id};
+
+  function esc(s) {{
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }}
+
+  function scrollBottom() {{ box.scrollTop = box.scrollHeight; }}
+  scrollBottom();
+
+  var KIND_LABELS = {{
+    photo: '📷 Rasm', video: '🎥 Video', document: '📎 Fayl',
+    voice: '🎙 Ovozli xabar', video_note: '⭕️ Videoxabar',
+    sticker: '🩶 Stiker', other: '📦 Xabar'
+  }};
+
+  function fmtTime(iso) {{
+    return (iso || '').slice(0, 16).replace('T', '  ');
+  }}
+
+  function appendMsg(m) {{
+    var empty = box.querySelector('.chat-empty');
+    if (empty) empty.remove();
+    var div = document.createElement('div');
+    div.className = 'chat-msg ' + (m.direction === 'out' ? 'out' : 'in');
+    div.dataset.id = m.id;
+    var text = m.text ? esc(m.text) : '';
+    if (m.kind && m.kind !== 'text') {{
+      var label = KIND_LABELS[m.kind] || '📦 Xabar';
+      text = '<span class="chat-kind">' + label + '</span>' + (text ? '<br>' + text : '');
+    }}
+    div.innerHTML = (text || '&nbsp;') + '<span class="chat-time">' + fmtTime(m.created_at) + '</span>';
+    box.appendChild(div);
+    lastId = m.id;
+  }}
+
+  form.addEventListener('submit', function (e) {{
+    e.preventDefault();
+    var text = input.value.trim();
+    if (!text) return;
+    sendBtn.disabled = true;
+    statusEl.textContent = 'Yuborilmoqda...';
+    fetch('/panel/foydalanuvchi/' + USER_ID + '/xabar', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify({{ text: text }})
+    }})
+      .then(function (r) {{ return r.json(); }})
+      .then(function (data) {{
+        sendBtn.disabled = false;
+        if (data.ok) {{
+          input.value = '';
+          appendMsg(data.message);
+          scrollBottom();
+          statusEl.textContent = '';
+        }} else {{
+          statusEl.textContent = '⚠️ ' + (data.error || 'Yuborib bo\\'lmadi.');
+        }}
+      }})
+      .catch(function () {{
+        sendBtn.disabled = false;
+        statusEl.textContent = '⚠️ Tarmoq xatosi.';
+      }});
+  }});
+
+  input.addEventListener('keydown', function (e) {{
+    if (e.key === 'Enter' && !e.shiftKey) {{
+      e.preventDefault();
+      form.requestSubmit();
+    }}
+  }});
+
+  // Yangi kiruvchi xabarlarni har 4 soniyada tekshiradi (sahifa qayta
+  // yuklanmasdan) -- foydalanuvchi shu paytda botga yozsa, shu yerda chiqadi.
+  setInterval(function () {{
+    fetch('/panel/api/xabarlar/' + USER_ID + '?after=' + lastId)
+      .then(function (r) {{ return r.json(); }})
+      .then(function (data) {{
+        if (data.messages && data.messages.length) {{
+          data.messages.forEach(appendMsg);
+          scrollBottom();
+        }}
+      }})
+      .catch(function () {{}});
+  }}, 4000);
+}})();
+</script>
 """
     return web.Response(
         text=base_page("Admin panel — Profil", body, current_user=current_user, theme=theme),
         content_type="text/html",
     )
+
+
+async def admin_panel_send_message(request):
+    """Admin panel chat oynasidan bot nomidan foydalanuvchiga xabar yuboradi."""
+    if not is_admin_web(request):
+        return web.json_response({"ok": False, "error": "ruxsat yo'q"}, status=403)
+
+    try:
+        user_id = int(request.match_info["id"])
+    except ValueError:
+        return web.json_response({"ok": False, "error": "noto'g'ri ID"}, status=400)
+
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    text = str(data.get("text", "")).strip()[:4000]
+    if not text:
+        return web.json_response({"ok": False, "error": "Bo'sh xabar yuborib bo'lmaydi."}, status=400)
+
+    bot = request.app["bot"]
+    try:
+        await bot.send_message(user_id, text)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": f"Telegram xatosi: {e}"}, status=502)
+
+    msg_id = await db.save_message(user_id, "out", text, "text")
+    return web.json_response({
+        "ok": True,
+        "message": {
+            "id": msg_id, "direction": "out", "kind": "text",
+            "text": text, "created_at": None,
+        },
+    })
+
+
+async def admin_panel_api_messages(request):
+    """Jonli yangilanish uchun JSON API -- berilgan ID'dan keyingi yangi
+    xabarlarni qaytaradi (admin panel sahifasi ochiq turganda so'raladi)."""
+    if not is_admin_web(request):
+        return web.json_response({"error": "ruxsat yo'q"}, status=403)
+
+    try:
+        user_id = int(request.match_info["id"])
+        after_id = int(request.query.get("after", "0"))
+    except ValueError:
+        return web.json_response({"messages": []})
+
+    rows = await db.get_new_messages(user_id, after_id)
+    return web.json_response({"messages": rows})
 
 
 async def admin_panel_toggle_block(request):
@@ -2394,4 +2622,6 @@ def create_app(bot) -> web.Application:
     app.router.add_get("/panel/api/qidiruv", admin_panel_api_search)
     app.router.add_get("/panel/foydalanuvchi/{id}", admin_panel_user_detail)
     app.router.add_post("/panel/foydalanuvchi/{id}/blok", admin_panel_toggle_block)
+    app.router.add_post("/panel/foydalanuvchi/{id}/xabar", admin_panel_send_message)
+    app.router.add_get("/panel/api/xabarlar/{id}", admin_panel_api_messages)
     return app
