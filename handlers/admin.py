@@ -7,8 +7,18 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 import database as db
-from config import ADMIN_IDS, ANNOUNCE_CHANNEL_ID, BOT_USERNAME
-from states import AddAnime, AddEpisode, DeleteAnime, Broadcast, AddChannel, GrantVip, RemoveVip, LinkEpisode
+from config import ADMIN_IDS, ANNOUNCE_CHANNEL_ID, BOT_USERNAME, PAGE_SIZE
+from states import (
+    AddAnime,
+    AddEpisode,
+    DeleteAnime,
+    Broadcast,
+    AddChannel,
+    GrantVip,
+    RemoveVip,
+    LinkEpisode,
+    WriteToUser,
+)
 from keyboards import (
     admin_menu_kb,
     main_menu_kb,
@@ -18,6 +28,9 @@ from keyboards import (
     vip_admin_menu_kb,
     vip_duration_kb,
     anime_vip_toggle_kb,
+    users_list_kb,
+    user_actions_kb,
+    exit_only_kb,
 )
 
 router = Router()
@@ -422,6 +435,130 @@ async def broadcast_send(call: CallbackQuery, state: FSMContext, bot: Bot):
 async def broadcast_cancel(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.answer("Bekor qilindi.", reply_markup=admin_menu_kb())
+    await call.answer()
+
+
+# ==================== FOYDALANUVCHILAR (ro'yxat / yozish / bloklash) ====================
+# "👥 Foydalanuvchilar" -- barcha foydalanuvchilar username bilan ro'yxatda
+# chiqadi, birinchi qatorda "🌐 HAMMAGA (ALL)" tugmasi bor (bosilsa --
+# barchaga bir vaqtda e'lon yuboriladi, xuddi "📢 Xabar yuborish" kabi).
+# Har bir foydalanuvchini bosganda uning profili (VIP, ko'rgan epizodlar,
+# yuklagan dublyajlar) va 2 ta tugma chiqadi: 🚫 Bloklash / ✍️ Yozish.
+
+@router.message(F.text == "👥 Foydalanuvchilar")
+async def users_list_start(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.clear()
+    total = await db.get_users_count()
+    users = await db.get_users_page(offset=0, limit=PAGE_SIZE)
+    await message.answer(
+        f"👥 Jami foydalanuvchilar: <b>{total}</b>\n\n"
+        f"Hammaga birdek e'lon qilish uchun \"🌐 HAMMAGA (ALL)\" ni bosing, "
+        f"yoki ro'yxatdan kerakli foydalanuvchini tanlang:",
+        reply_markup=users_list_kb(users, 0, total),
+    )
+
+
+@router.callback_query(F.data.startswith("userspage_"))
+async def users_list_page(call: CallbackQuery):
+    offset = int(call.data.split("_")[1])
+    total = await db.get_users_count()
+    users = await db.get_users_page(offset=offset, limit=PAGE_SIZE)
+    await call.message.edit_text(
+        f"👥 Jami foydalanuvchilar: <b>{total}</b>\n\nKerakli foydalanuvchini tanlang:",
+        reply_markup=users_list_kb(users, offset, total),
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data == "users_all")
+async def users_all_broadcast(call: CallbackQuery, state: FSMContext):
+    """"HAMMAGA (ALL)" tugmasi -- xuddi "📢 Xabar yuborish" kabi, admin bitta
+    xabar yozadi va u bazadagi barcha foydalanuvchilarga bir vaqtda yuboriladi."""
+    await state.set_state(Broadcast.content)
+    await call.message.answer(
+        "📢 Barchaga bir vaqtda yuboriladigan xabarni kiriting (matn, rasm, video bo'lishi mumkin):"
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("userinfo_"))
+async def user_info_show(call: CallbackQuery):
+    user_id = int(call.data.split("_")[1])
+    info = await db.get_user_full_info(user_id)
+    if not info:
+        await call.answer("Foydalanuvchi topilmadi.", show_alert=True)
+        return
+
+    username = f"@{info['username']}" if info["username"] else "—"
+    if info["vip"]:
+        vip_status = "♾ Umrbod" if not info["vip_expires_at"] else f"{info['vip_expires_at'][:10]} gacha"
+    else:
+        vip_status = "Yo'q"
+    blocked_status = "🚫 Bloklangan" if info["blocked"] else "✅ Faol"
+    joined = info["joined_at"][:10] if info["joined_at"] else "—"
+
+    text = (
+        f"👤 <b>Foydalanuvchi profili</b>\n\n"
+        f"🆔 ID: <code>{info['user_id']}</code>\n"
+        f"Username: {username}\n"
+        f"Ism: {info['full_name'] or '—'}\n"
+        f"📅 Qo'shilgan: {joined}\n"
+        f"Holati: {blocked_status}\n"
+        f"👑 VIP: {vip_status}\n"
+        f"🎬 Ko'rgan epizodlar: {info['watched_count']}\n"
+        f"🎙 Yuklagan dublyajlar: {info['dubs_count']}\n\n"
+        f"Botdan qanday foydalangani shu yerda -- kerakli amalni tanlang:"
+    )
+    await call.message.answer(text, reply_markup=user_actions_kb(user_id, bool(info["blocked"])))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("blockuser_"))
+async def user_block(call: CallbackQuery):
+    user_id = int(call.data.split("_")[1])
+    await db.block_user(user_id)
+    await call.message.edit_reply_markup(reply_markup=user_actions_kb(user_id, True))
+    await call.answer("🚫 Foydalanuvchi bloklandi.")
+
+
+@router.callback_query(F.data.startswith("unblockuser_"))
+async def user_unblock(call: CallbackQuery):
+    user_id = int(call.data.split("_")[1])
+    await db.unblock_user(user_id)
+    await call.message.edit_reply_markup(reply_markup=user_actions_kb(user_id, False))
+    await call.answer("✅ Blokdan chiqarildi.")
+
+
+@router.callback_query(F.data.startswith("writeuser_"))
+async def user_write_start(call: CallbackQuery, state: FSMContext):
+    user_id = int(call.data.split("_")[1])
+    await state.update_data(target_user_id=user_id)
+    await state.set_state(WriteToUser.message)
+    await call.message.answer(
+        f"✍️ <code>{user_id}</code> ga shaxsan yuboriladigan xabarni kiriting "
+        f"(matn, rasm yoki video bo'lishi mumkin):"
+    )
+    await call.answer()
+
+
+@router.message(WriteToUser.message)
+async def user_write_send(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    target_user_id = data["target_user_id"]
+    await state.clear()
+    try:
+        await bot.copy_message(chat_id=target_user_id, from_chat_id=message.chat.id, message_id=message.message_id)
+        await message.answer("✅ Xabar foydalanuvchiga yuborildi.", reply_markup=exit_only_kb())
+    except Exception as e:
+        await message.answer(f"❌ Yuborib bo'lmadi: {e}", reply_markup=exit_only_kb())
+
+
+@router.callback_query(F.data == "users_exit")
+async def users_exit(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.answer("🔧 Admin panel:", reply_markup=admin_menu_kb())
     await call.answer()
 
 

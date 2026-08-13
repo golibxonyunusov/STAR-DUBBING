@@ -53,3 +53,7 @@ class LinkEpisode(StatesGroup):
 class SubmitDub(StatesGroup):
     anime_title = State()
     video = State()
+
+
+class WriteToUser(StatesGroup):
+    message = State()

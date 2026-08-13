@@ -23,6 +23,7 @@ def admin_menu_kb() -> ReplyKeyboardMarkup:
         [KeyboardButton(text="➕ Anime qo'shish"), KeyboardButton(text="🎬 Epizod qo'shish")],
         [KeyboardButton(text="🔗 Epizodni saytga bog'lash"), KeyboardButton(text="🗑 Anime o'chirish")],
         [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="📢 Xabar yuborish")],
+        [KeyboardButton(text="👥 Foydalanuvchilar")],
         [KeyboardButton(text="📡 Kanal sozlash"), KeyboardButton(text="👑 VIP boshqarish")],
         [KeyboardButton(text="🔒 Anime VIP qilish")],
         [KeyboardButton(text="⬅️ Foydalanuvchi menyusi")],
@@ -154,6 +155,59 @@ def cancel_kb() -> ReplyKeyboardMarkup:
         keyboard=[[KeyboardButton(text="❌ Bekor qilish")]],
         resize_keyboard=True,
     )
+
+
+# ---------- FOYDALANUVCHILAR (admin: ro'yxat / yozish / bloklash) ----------
+
+def users_list_kb(users, offset, total) -> InlineKeyboardMarkup:
+    """Birinchi qatorda har doim '🌐 HAMMAGA (ALL)' tugmasi -- bosilsa
+    broadcast (barchaga xabar) jarayoni boshlanadi. Keyin har bir
+    foydalanuvchi username (yoki ism/ID) bilan alohida tugma sifatida."""
+    rows = [[InlineKeyboardButton(text="🌐 HAMMAGA (ALL) — E'lon qilish", callback_data="users_all")]]
+
+    for u in users:
+        if u["username"]:
+            label = f"@{u['username']}"
+        elif u["full_name"]:
+            label = u["full_name"]
+        else:
+            label = str(u["user_id"])
+        if u["blocked"]:
+            label = f"🚫 {label}"
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"userinfo_{u['user_id']}")])
+
+    nav = []
+    if offset > 0:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"userspage_{max(offset - PAGE_SIZE, 0)}"))
+    if offset + PAGE_SIZE < total:
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"userspage_{offset + PAGE_SIZE}"))
+    if nav:
+        rows.append(nav)
+
+    rows.append([InlineKeyboardButton(text="🚪 Chiqish", callback_data="users_exit")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def user_actions_kb(user_id: int, blocked: bool) -> InlineKeyboardMarkup:
+    """Tanlangan foydalanuvchi kartochkasi ostidagi tugmalar: bloklash/
+    blokdan chiqarish, yozish, ro'yxatga qaytish va chiqish."""
+    block_btn = (
+        InlineKeyboardButton(text="✅ Blokdan chiqarish", callback_data=f"unblockuser_{user_id}")
+        if blocked else
+        InlineKeyboardButton(text="🚫 Bloklash", callback_data=f"blockuser_{user_id}")
+    )
+    rows = [
+        [block_btn],
+        [InlineKeyboardButton(text="✍️ Yozish", callback_data=f"writeuser_{user_id}")],
+        [InlineKeyboardButton(text="⬅️ Ro'yxatga qaytish", callback_data="userspage_0")],
+        [InlineKeyboardButton(text="🚪 Chiqish", callback_data="users_exit")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def exit_only_kb() -> InlineKeyboardMarkup:
+    """Foydalanuvchiga xabar yuborilgandan keyin ko'rinadigan yagona 'Chiqish' tugmasi."""
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🚪 Chiqish", callback_data="users_exit")]])
 
 
 # ---------- VIP ----------

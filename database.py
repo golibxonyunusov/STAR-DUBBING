@@ -198,6 +198,13 @@ async def init_db():
         await client.execute("ALTER TABLE anime ADD COLUMN announce_msg_id INTEGER")
     except Exception:
         pass
+    # blocked -- admin panelidan bloklangan foydalanuvchilarni belgilaydi.
+    # Bloklangan foydalanuvchining xabarlari botga yetib bormaydi (agar
+    # middlewares.py dagi BlockCheckMiddleware ulangan bo'lsa).
+    try:
+        await client.execute("ALTER TABLE users ADD COLUMN blocked INTEGER DEFAULT 0")
+    except Exception:
+        pass
 
 
 # ---------- USERS ----------
@@ -241,6 +248,67 @@ async def get_user(user_id: int):
     client = get_client()
     rs = await client.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
     return rs.rows[0] if rs.rows else None
+
+
+async def get_users_page(offset: int = 0, limit: int = 10):
+    """Foydalanuvchilar ro'yxatini sahifalab qaytaradi (admin panel --
+    '👥 Foydalanuvchilar' bo'limi uchun): user_id, username, full_name, blocked."""
+    client = get_client()
+    rs = await client.execute(
+        "SELECT user_id, username, full_name, blocked FROM users "
+        "ORDER BY joined_at DESC LIMIT ? OFFSET ?",
+        (limit, offset),
+    )
+    return [dict(zip(rs.columns, row)) for row in rs.rows]
+
+
+async def get_user_full_info(user_id: int):
+    """Bitta foydalanuvchi haqida to'liq ma'lumot: profil, VIP holati,
+    ko'rgan epizodlar soni, yuklagan dublyajlar soni, bloklanganmi.
+    Admin panelda '✍️ Yozish' / '🚫 Bloklash' oldidan ko'rsatiladi."""
+    client = get_client()
+    rs = await client.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    if not rs.rows:
+        return None
+    user = dict(zip(rs.columns, rs.rows[0]))
+
+    rs_vip = await client.execute(
+        "SELECT expires_at FROM vip_users WHERE user_id = ?", (user_id,)
+    )
+    if rs_vip.rows:
+        user["vip"] = True
+        user["vip_expires_at"] = rs_vip.rows[0][0]
+    else:
+        user["vip"] = False
+        user["vip_expires_at"] = None
+
+    rs_watched = await client.execute(
+        "SELECT COUNT(*) FROM episode_views WHERE user_id = ?", (user_id,)
+    )
+    user["watched_count"] = rs_watched.rows[0][0] if rs_watched.rows else 0
+
+    rs_dubs = await client.execute(
+        "SELECT COUNT(*) FROM dub_submissions WHERE user_id = ?", (user_id,)
+    )
+    user["dubs_count"] = rs_dubs.rows[0][0] if rs_dubs.rows else 0
+
+    return user
+
+
+async def block_user(user_id: int):
+    client = get_client()
+    await client.execute("UPDATE users SET blocked = 1 WHERE user_id = ?", (user_id,))
+
+
+async def unblock_user(user_id: int):
+    client = get_client()
+    await client.execute("UPDATE users SET blocked = 0 WHERE user_id = ?", (user_id,))
+
+
+async def is_user_blocked(user_id: int) -> bool:
+    client = get_client()
+    rs = await client.execute("SELECT blocked FROM users WHERE user_id = ?", (user_id,))
+    return bool(rs.rows and rs.rows[0][0])
 
 
 # ---------- ANIME ----------
