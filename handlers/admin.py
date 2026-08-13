@@ -4,7 +4,15 @@ from aiogram import Router, F, Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    InlineQuery,
+    InlineQueryResultArticle,
+    InputTextMessageContent,
+)
 
 import database as db
 from config import ADMIN_IDS, ANNOUNCE_CHANNEL_ID, BOT_USERNAME, PAGE_SIZE
@@ -511,12 +519,13 @@ async def users_search_results(message: Message, state: FSMContext):
     )
 
 
-@router.callback_query(F.data.startswith("userinfo_"))
-async def user_info_show(call: CallbackQuery):
-    user_id = int(call.data.split("_")[1])
+async def _send_user_info_card(send, user_id: int):
+    """Foydalanuvchi profil kartasini chiqaradi -- ro'yxatdagi tugma orqali
+    ham, inline qidiruv orqali kelgan /showuser_ buyrug'i orqali ham
+    ishlatiladi. `send` -- message.answer yoki call.message.answer."""
     info = await db.get_user_full_info(user_id)
     if not info:
-        await call.answer("Foydalanuvchi topilmadi.", show_alert=True)
+        await send("Foydalanuvchi topilmadi.")
         return
 
     username = f"@{info['username']}" if info["username"] else "—"
@@ -539,8 +548,61 @@ async def user_info_show(call: CallbackQuery):
         f"🎙 Yuklagan dublyajlar: {info['dubs_count']}\n\n"
         f"Botdan qanday foydalangani shu yerda -- kerakli amalni tanlang:"
     )
-    await call.message.answer(text, reply_markup=user_actions_kb(user_id, bool(info["blocked"])))
+    await send(text, reply_markup=user_actions_kb(user_id, bool(info["blocked"])))
+
+
+@router.callback_query(F.data.startswith("userinfo_"))
+async def user_info_show(call: CallbackQuery):
+    user_id = int(call.data.split("_")[1])
+    await _send_user_info_card(call.message.answer, user_id)
     await call.answer()
+
+
+# ---------- INLINE QIDIRUV: yozayotganda, yubormasdan turib natija chiqishi ----------
+# Bu ishlashi uchun @BotFather'da botga bir marta /setinline orqali inline
+# rejim yoqilgan bo'lishi kerak. Admin botning O'ZINING chatida
+# "@BotUsername qidiruv_so'zi" deb yozishni boshlaydi -- Telegram hali
+# yubormasdan turib mos foydalanuvchilarni ro'yxat qilib ko'rsatadi.
+# Birini tanlasa, u "/showuser_<id>" degan xabar sifatida shu chatga
+# yuboriladi va bot uni ushlab profilni ochadi.
+
+@router.inline_query()
+async def users_inline_search(inline_query: InlineQuery):
+    if not is_admin(inline_query.from_user.id):
+        await inline_query.answer([], cache_time=1, is_personal=True)
+        return
+
+    query = inline_query.query.strip()
+    if not query:
+        await inline_query.answer([], cache_time=1, is_personal=True)
+        return
+
+    found = await db.search_users(query, limit=20)
+    articles = []
+    for u in found:
+        username = f"@{u['username']}" if u["username"] else "username yo'q"
+        name = u["full_name"] or "Ism yo'q"
+        blocked_mark = "🚫 " if u["blocked"] else ""
+        articles.append(
+            InlineQueryResultArticle(
+                id=str(u["user_id"]),
+                title=f"{blocked_mark}{username}",
+                description=f"{name} • ID: {u['user_id']}",
+                input_message_content=InputTextMessageContent(
+                    message_text=f"/showuser_{u['user_id']}"
+                ),
+            )
+        )
+
+    await inline_query.answer(articles, cache_time=1, is_personal=True)
+
+
+@router.message(F.text.regexp(r"^/showuser_(\d+)$"))
+async def show_user_via_inline(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    user_id = int(message.text.split("_")[1])
+    await _send_user_info_card(message.answer, user_id)
 
 
 @router.callback_query(F.data.startswith("blockuser_"))
