@@ -114,6 +114,22 @@ CREATE TABLE IF NOT EXISTS monthly_winners (
     announced_at TEXT,
     PRIMARY KEY (month, category)
 );
+
+-- Chat tarixi: bot bilan foydalanuvchi o'rtasidagi suhbat xabarlari.
+-- sender: 'user' (foydalanuvchi yozgan), 'bot' (bot javobi),
+--         'admin' (admin panelidan yozilgan xabar).
+-- Admin panelida har bir foydalanuvchi yonida shu jadvaldagi yozuvlar
+-- suhbat ko'rinishida ko'rsatiladi.
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    sender TEXT NOT NULL DEFAULT 'user',
+    text TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_user
+    ON chat_messages (user_id, id);
 """
 
 
@@ -335,6 +351,45 @@ async def search_users(query: str, limit: int = 20):
         ),
     )
     return [dict(zip(rs.columns, row)) for row in rs.rows]
+
+
+# ---------- CHAT XABARLARI ----------
+
+async def save_chat_message(user_id: int, sender: str, text: str):
+    """Suhbatdagi bitta xabarni saqlaydi (admin panel chat tarixi uchun).
+    sender: 'user' | 'bot' | 'admin'."""
+    text = (text or "").strip()
+    if not text:
+        return
+    client = get_client()
+    await client.execute(
+        "INSERT INTO chat_messages (user_id, sender, text) VALUES (?, ?, ?)",
+        (user_id, sender, text),
+    )
+
+
+async def get_chat_history(user_id: int, limit: int = 200):
+    """Foydalanuvchi bilan bot o'rtasidagi suhbat tarixini qaytaradi.
+    Eng eski xabar birinchi bo'ladi. Har bir yozuv dict:
+    id, user_id, sender, text, created_at."""
+    client = get_client()
+    rs = await client.execute(
+        "SELECT id, user_id, sender, text, created_at FROM chat_messages "
+        "WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+        (user_id, limit),
+    )
+    rows = [dict(zip(rs.columns, row)) for row in rs.rows]
+    rows.reverse()  # eng eskisi birinchi bo'lib ko'rsatilsin
+    return rows
+
+
+async def count_chat_messages(user_id: int) -> int:
+    """Foydalanuvchining saqlangan xabarlari soni."""
+    client = get_client()
+    rs = await client.execute(
+        "SELECT COUNT(*) FROM chat_messages WHERE user_id = ?", (user_id,)
+    )
+    return rs.rows[0][0] if rs.rows else 0
 
 
 # ---------- ANIME ----------

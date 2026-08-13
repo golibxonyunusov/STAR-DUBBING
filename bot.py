@@ -4,7 +4,7 @@ import os
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram.enums import ChatType, ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -17,6 +17,70 @@ import database as db
 import web as website
 import monthly_rewards
 import safe_photo_patch
+
+
+async def _log_incoming_message(message: Message):
+    """Foydalanuvchining botga yozgan xabarini chat_messages jadvaliga
+    saqlaydi (admin panel suhbat tarixi uchun)."""
+    try:
+        if message.chat.type != ChatType.PRIVATE:
+            return
+        user_id = message.from_user.id if message.from_user else None
+        if not user_id or user_id in ADMIN_IDS:
+            return
+        text = (message.text or message.caption or "").strip()
+        if text:
+            await db.save_chat_message(user_id, "user", text)
+    except Exception:
+        logging.exception("Chat xabarini DB ga yozishda xato")
+
+
+async def chat_log_middleware(handler, event, data):
+    """Har bir kiruvchi foydalanuvchi xabaridan keyin uni DB ga yozadi."""
+    await _log_incoming_message(event)
+    return await handler(event, data)
+
+
+def _patch_bot_send_logging(bot: Bot):
+    """Bot orqali yuborilgan javoblarni chat_messages jadvaliga saqlaydi
+    (faqat shaxsiy chatlar, ya'ni chat_id > 0 bo'lsa).
+
+    Admin panelidan yuborilgan xabarlar web.py da '_skip_chat_log=True'
+    bilan chaqiriladi -- ular bu yerda saqlanmaydi, chunki web.py ularni
+    'admin' sifatida alohida saqlaydi (aks holda ikki marta yozilib
+    qolardi)."""
+
+    def make_wrapper(original):
+        async def wrapper(*args, **kwargs):
+            skip = kwargs.pop("_skip_chat_log", False)
+            result = await original(*args, **kwargs)
+            try:
+                if skip:
+                    return result
+                chat_id = args[0] if args else kwargs.get("chat_id")
+                if not isinstance(chat_id, int) or chat_id <= 0:
+                    return result  # kanal / guruh / noma'lum chat
+                text = ""
+                if isinstance(result, list):  # send_media_group kabi
+                    for m in result:
+                        if m and (m.text or m.caption):
+                            text = text or (m.text or m.caption)
+                elif result and (result.text or result.caption):
+                    text = result.text or result.caption
+                text = (text or "").strip()
+                if text:
+                    await db.save_chat_message(chat_id, "bot", text)
+            except Exception:
+                logging.exception("Bot javobini DB ga yozishda xato")
+            return result
+        return wrapper
+
+    for method_name in (
+        "send_message", "send_photo", "send_video", "send_animation",
+        "send_audio", "send_document", "send_voice", "send_media_group",
+    ):
+        original = getattr(bot, method_name)
+        setattr(bot, method_name, make_wrapper(original))
 
 
 async def start_web_server(bot: Bot):
@@ -138,6 +202,13 @@ async def main():
 
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
+
+    # ---- Chat tarixini saqlash ----
+    # Foydalanuvchining yozgan xabarlari va botning javoblari chat_messages
+    # jadvaliga yoziladi -- admin panelda har bir foydalanuvchi yonida shu
+    # suhbat ko'rinishida ko'rsatiladi.
+    dp.message.outer_middleware(chat_log_middleware)
+    _patch_bot_send_logging(bot)
 
     # Texnik xizmat buyruqlari (masalan /clearcache) -- eng birinchi ulanadi.
     register_maintenance_commands(dp)
