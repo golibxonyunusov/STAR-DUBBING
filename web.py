@@ -902,25 +902,6 @@ STYLES = """
   }
   .ai-send-btn:disabled { opacity: .4; cursor: default; }
   .ai-hint { font-size: 10px; color: var(--muted); margin-top: 6px; text-align: center; }
-
-  /* ---- admin panel: suhbat tarixi ---- */
-  .chat-box { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-top: 24px; }
-  .chat-head { font-size: 15px; font-weight: 800; color: var(--ink); margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
-  .chat-count { font-size: 11px; font-weight: 600; color: var(--muted); background: var(--panel-hi); border: 1px solid var(--line); padding: 2px 10px; border-radius: 999px; }
-  .chat-scroll { max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px 4px; }
-  .chat-empty { color: var(--muted); text-align: center; padding: 28px 0; font-size: 13px; }
-  .chat-msg { display: flex; flex-direction: column; max-width: 80%; }
-  .chat-in { align-self: flex-start; align-items: flex-start; }
-  .chat-out { align-self: flex-end; align-items: flex-end; }
-  .chat-bubble { padding: 9px 13px; border-radius: 14px; font-size: 14px; line-height: 1.45; word-break: break-word; white-space: pre-wrap; }
-  .chat-bubble-in { background: var(--panel-hi); border: 1px solid var(--line); color: var(--ink); border-bottom-left-radius: 4px; }
-  .chat-bubble-out { background: linear-gradient(135deg, var(--violet-deep), var(--violet)); color: #fff; border-bottom-right-radius: 4px; }
-  .chat-bubble-admin { background: linear-gradient(135deg, #0d4a34, #1d8a5f); color: #eafff4; border-bottom-right-radius: 4px; }
-  .chat-time { font-size: 11px; color: var(--muted); margin-top: 4px; }
-  .chat-reply { display: flex; gap: 10px; margin-top: 14px; align-items: flex-end; }
-  .chat-reply textarea { flex: 1; resize: vertical; min-height: 62px; background: var(--panel-hi); border: 1px solid var(--line); color: var(--ink); border-radius: 12px; padding: 10px 12px; font-size: 14px; font-family: inherit; outline: none; }
-  .chat-reply textarea:focus { border-color: var(--violet); }
-  .chat-hint { font-size: 11px; color: var(--muted); margin-top: 8px; }
 """
 
 
@@ -2310,55 +2291,6 @@ async def admin_panel_api_search(request):
     ])
 
 
-async def _chat_history_html(user_id: int) -> str:
-    """Foydalanuvchi bilan bot o'rtasidagi suhbatni chat-bubble'larga aylantiradi.
-    Barcha matnlar html.escape qilinadi -- xabarda xavfli kod (masalan
-    <script>) bo'lsa ham admin panel buzilmaydi."""
-    msgs = await db.get_chat_history(user_id, limit=200)
-    if not msgs:
-        return '<div class="chat-empty">Suhbat hozircha bo\'sh — foydalanuvchi botga hali yozmagan.</div>'
-    parts = []
-    for m in msgs:
-        sender = m["sender"]
-        text = html.escape(m["text"] or "").replace("\r\n", "\n").replace("\n", "<br>")
-        created = html.escape(m["created_at"] or "")
-        if sender == "user":
-            cls, bubble, who = "chat-in", "chat-bubble-in", ""
-        elif sender == "admin":
-            cls, bubble, who = "chat-out", "chat-bubble-admin", "🛡️ "
-        else:
-            cls, bubble, who = "chat-out", "chat-bubble-out", "🤖 "
-        parts.append(
-            f'<div class="chat-msg {cls}">'
-            f'<div class="chat-bubble {bubble}">{who}{text}</div>'
-            f'<div class="chat-time">{created}</div>'
-            f"</div>"
-        )
-    return "\n".join(parts)
-
-
-_CHAT_REFRESH_JS = """<script>
-(function () {
-  var apiUrl = '__API_URL__';
-  var box = document.getElementById('chatScroll');
-  if (!box) return;
-  box.scrollTop = box.scrollHeight;
-  setInterval(function () {
-    fetch(apiUrl)
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (!d || d.html === undefined) return;
-        var b = document.getElementById('chatScroll');
-        if (!b) return;
-        b.innerHTML = d.html;
-        b.scrollTop = b.scrollHeight;
-      })
-      .catch(function () {});
-  }, 5000);
-})();
-</script>"""
-
-
 async def admin_panel_user_detail(request):
     if not is_admin_web(request):
         return web.HTTPFound("/panel")
@@ -2390,26 +2322,6 @@ async def admin_panel_user_detail(request):
     )
     block_btn_label = "✅ Blokdan chiqarish" if blocked else "🚫 Bloklash"
 
-    msg_count = await db.count_chat_messages(user_id)
-    chat_html = await _chat_history_html(user_id)
-    chat_js = _CHAT_REFRESH_JS.replace(
-        "__API_URL__", f"/panel/api/foydalanuvchi/{user_id}/suhbat"
-    )
-    xato = request.query.get("xato", "")
-    xato_html = ""
-    if xato == "yuborilmadi":
-        xato_html = (
-            '<div style="background:#3a1220;border:1px solid #ff5d7a66;color:#ffb3c1;padding:10px 14px;border-radius:10px;margin-bottom:12px;font-size:13px">'
-            '⚠️ Xabar yuborilmadi: foydalanuvchi botni bloklagan yoki bot unga yozish imkoniyatini yo\'qotgan. Xabar shunga qaramay suhbat tarixiga saqlandi.'
-            '</div>'
-        )
-    elif xato == "bot_yoq":
-        xato_html = (
-            '<div style="background:#3a1220;border:1px solid #ff5d7a66;color:#ffb3c1;padding:10px 14px;border-radius:10px;margin-bottom:12px;font-size:13px">'
-            '⚠️ Bot hozir ishlamayapti — xabar saqlandi, lekin foydalanuvchiga yetkazilmadi. Bot ishga tushgach xabarni qayta yuborishingiz mumkin.'
-            '</div>'
-        )
-
     body = f"""
 <h2 class="section"><span class="ic">&#128100;</span> Foydalanuvchi profili</h2>
 <div class="profile-card">
@@ -2428,18 +2340,6 @@ async def admin_panel_user_detail(request):
   </form>
   <a href="/panel/foydalanuvchilar" class="cta-secondary">⬅️ Ro'yxatga qaytish</a>
 </div>
-
-<div class="chat-box">
-  <div class="chat-head">💬 Suhbat tarixi<span class="chat-count">{msg_count} ta xabar</span></div>
-  {xato_html}
-  <div class="chat-scroll" id="chatScroll">{chat_html}</div>
-  <form method="post" action="/panel/foydalanuvchi/{info['user_id']}/xabar" class="chat-reply">
-    <textarea name="matn" placeholder="Foydalanuvchiga xabar yozing..." required></textarea>
-    <button type="submit" class="cta-secondary">Yuborish ➤</button>
-  </form>
-  <div class="chat-hint">Suhbat har 5 soniyada avtomatik yangilanadi</div>
-</div>
-{chat_js}
 """
     return web.Response(
         text=base_page("Admin panel — Profil", body, current_user=current_user, theme=theme),
@@ -2462,50 +2362,6 @@ async def admin_panel_toggle_block(request):
         await db.block_user(user_id)
 
     return web.HTTPFound(f"/panel/foydalanuvchi/{user_id}")
-
-
-async def admin_panel_send_message(request):
-    if not is_admin_web(request):
-        return web.HTTPFound("/panel")
-    try:
-        user_id = int(request.match_info["id"])
-    except ValueError:
-        return web.HTTPFound("/panel/foydalanuvchilar")
-
-    form = await request.post()
-    text = (form.get("matn") or "").strip()
-    if not text:
-        return web.HTTPFound(f"/panel/foydalanuvchi/{user_id}")
-
-    escaped = html.escape(text)
-    bot = request.app.get("bot")
-    xato = ""
-    if bot is None:
-        xato = "bot_yoq"
-    else:
-        try:
-            # _skip_chat_log=True -- bot.py dagi patch bu xabarni 'bot' sifatida
-            # ikkinchi marta yozib qo'ymasligi uchun (biz uni 'admin' deb saqlaymiz).
-            await bot.send_message(user_id, escaped, parse_mode="HTML", _skip_chat_log=True)
-        except Exception:
-            xato = "yuborilmadi"
-
-    await db.save_chat_message(user_id, "admin", text)
-    if xato:
-        return web.HTTPFound(f"/panel/foydalanuvchi/{user_id}?xato={xato}")
-    return web.HTTPFound(f"/panel/foydalanuvchi/{user_id}")
-
-
-async def admin_panel_api_chat(request):
-    """Suhbat tarixini HTML parcha ko'rinishida qaytaradi (JS har 5 soniyada
-    chaqiradi -- shu orqali sahifa qayta yuklanmasdan yangilanadi)."""
-    if not is_admin_web(request):
-        return web.json_response({"error": "forbidden"}, status=403)
-    try:
-        user_id = int(request.match_info["id"])
-    except ValueError:
-        return web.json_response({"error": "bad id"}, status=400)
-    return web.json_response({"html": await _chat_history_html(user_id)})
 
 
 def create_app(bot) -> web.Application:
@@ -2538,6 +2394,4 @@ def create_app(bot) -> web.Application:
     app.router.add_get("/panel/api/qidiruv", admin_panel_api_search)
     app.router.add_get("/panel/foydalanuvchi/{id}", admin_panel_user_detail)
     app.router.add_post("/panel/foydalanuvchi/{id}/blok", admin_panel_toggle_block)
-    app.router.add_get("/panel/api/foydalanuvchi/{id}/suhbat", admin_panel_api_chat)
-    app.router.add_post("/panel/foydalanuvchi/{id}/xabar", admin_panel_send_message)
-    return app   
+    return app
