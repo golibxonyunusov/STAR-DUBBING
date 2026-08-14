@@ -115,21 +115,13 @@ CREATE TABLE IF NOT EXISTS monthly_winners (
     PRIMARY KEY (month, category)
 );
 
--- Chat tarixi: bot bilan foydalanuvchi o'rtasidagi suhbat xabarlari.
--- sender: 'user' (foydalanuvchi yozgan), 'bot' (bot javobi),
---         'admin' (admin panelidan yozilgan xabar).
--- Admin panelida har bir foydalanuvchi yonida shu jadvaldagi yozuvlar
--- suhbat ko'rinishida ko'rsatiladi.
-CREATE TABLE IF NOT EXISTS chat_messages (
+CREATE TABLE IF NOT EXISTS message_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
-    sender TEXT NOT NULL DEFAULT 'user',
-    text TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    direction TEXT NOT NULL,
+    content TEXT,
+    created_at TEXT
 );
-
-CREATE INDEX IF NOT EXISTS idx_chat_messages_user
-    ON chat_messages (user_id, id);
 """
 
 
@@ -219,6 +211,13 @@ async def init_db():
     # middlewares.py dagi BlockCheckMiddleware ulangan bo'lsa).
     try:
         await client.execute("ALTER TABLE users ADD COLUMN blocked INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    # message_log jadvali qidiruvlarni tezlashtirish uchun indeks.
+    try:
+        await client.execute(
+            "CREATE INDEX IF NOT EXISTS idx_message_log_user ON message_log(user_id, created_at)"
+        )
     except Exception:
         pass
 
@@ -327,6 +326,32 @@ async def is_user_blocked(user_id: int) -> bool:
     return bool(rs.rows and rs.rows[0][0])
 
 
+async def log_message(user_id: int, direction: str, content: str):
+    """Foydalanuvchi bilan bot/admin o'rtasidagi xabarni saqlaydi.
+    direction: 'in' -- foydalanuvchidan botga, 'out' -- admindan foydalanuvchiga.
+    Bu orqali admin panel (bot ichida ham, saytda ham) "yozishganlarini"
+    xronologik tartibda ko'rsata oladi."""
+    client = get_client()
+    await client.execute(
+        "INSERT INTO message_log (user_id, direction, content, created_at) VALUES (?, ?, ?, ?)",
+        (user_id, direction, content, datetime.utcnow().isoformat()),
+    )
+
+
+async def get_message_history(user_id: int, limit: int = 100):
+    """Foydalanuvchi bilan bo'lgan yozishmalar tarixini eskisidan yangisiga
+    qarab (xronologik) qaytaradi -- admin panelda suhbat ko'rinishida
+    chiqarish uchun."""
+    client = get_client()
+    rs = await client.execute(
+        "SELECT direction, content, created_at FROM message_log "
+        "WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+        (user_id, limit),
+    )
+    rows = [dict(zip(rs.columns, row)) for row in rs.rows]
+    return list(reversed(rows))
+
+
 async def search_users(query: str, limit: int = 20):
     """Username, ism yoki Telegram ID bo'yicha foydalanuvchi qidiradi --
     qidiruv so'zining istalgan qismi mos kelsa ham topiladi (admin panel --
@@ -351,45 +376,6 @@ async def search_users(query: str, limit: int = 20):
         ),
     )
     return [dict(zip(rs.columns, row)) for row in rs.rows]
-
-
-# ---------- CHAT XABARLARI ----------
-
-async def save_chat_message(user_id: int, sender: str, text: str):
-    """Suhbatdagi bitta xabarni saqlaydi (admin panel chat tarixi uchun).
-    sender: 'user' | 'bot' | 'admin'."""
-    text = (text or "").strip()
-    if not text:
-        return
-    client = get_client()
-    await client.execute(
-        "INSERT INTO chat_messages (user_id, sender, text) VALUES (?, ?, ?)",
-        (user_id, sender, text),
-    )
-
-
-async def get_chat_history(user_id: int, limit: int = 200):
-    """Foydalanuvchi bilan bot o'rtasidagi suhbat tarixini qaytaradi.
-    Eng eski xabar birinchi bo'ladi. Har bir yozuv dict:
-    id, user_id, sender, text, created_at."""
-    client = get_client()
-    rs = await client.execute(
-        "SELECT id, user_id, sender, text, created_at FROM chat_messages "
-        "WHERE user_id = ? ORDER BY id DESC LIMIT ?",
-        (user_id, limit),
-    )
-    rows = [dict(zip(rs.columns, row)) for row in rs.rows]
-    rows.reverse()  # eng eskisi birinchi bo'lib ko'rsatilsin
-    return rows
-
-
-async def count_chat_messages(user_id: int) -> int:
-    """Foydalanuvchining saqlangan xabarlari soni."""
-    client = get_client()
-    rs = await client.execute(
-        "SELECT COUNT(*) FROM chat_messages WHERE user_id = ?", (user_id,)
-    )
-    return rs.rows[0][0] if rs.rows else 0
 
 
 # ---------- ANIME ----------

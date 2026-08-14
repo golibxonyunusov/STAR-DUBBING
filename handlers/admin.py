@@ -640,6 +640,8 @@ async def user_write_send(message: Message, state: FSMContext, bot: Bot):
     await state.clear()
     try:
         await bot.copy_message(chat_id=target_user_id, from_chat_id=message.chat.id, message_id=message.message_id)
+        content = message.text or message.caption or "· media xabar"
+        await db.log_message(target_user_id, "out", content)
         await message.answer("✅ Xabar foydalanuvchiga yuborildi.", reply_markup=exit_only_kb())
     except Exception as e:
         await message.answer(f"❌ Yuborib bo'lmadi: {e}", reply_markup=exit_only_kb())
