@@ -28,7 +28,7 @@ from aiohttp import web
 
 import database as db
 import ai_assistant
-from config import BOT_USERNAME, PAGE_SIZE
+from config import BOT_USERNAME, PAGE_SIZE, SITE_URL
 
 ACCENT = "#9b8cff"
 
@@ -1271,8 +1271,16 @@ SCRIPTS = """
 """
 
 
+DEFAULT_SEO_DESCRIPTION = (
+    "STAR DUBBING — anime va animelarni o'zbek tilida sifatli dublyaj bilan "
+    "bepul tomosha qiling. Yangi qismlar muntazam qo'shiladi, Telegram bot "
+    "orqali istalgan joyda tomosha qilish imkoni bor."
+)
+
+
 def base_page(title: str, body: str, active: str = "", marquee_items=None,
-               current_user=None, theme: str = "dark") -> str:
+               current_user=None, theme: str = "dark",
+               description: str = "", canonical_path: str = "") -> str:
     if not marquee_items:
         marquee_items = [
             "YANGI QISMLAR MUNTAZAM YUKLANADI",
@@ -1285,6 +1293,10 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None,
     theme_icon = "☀️" if theme == "light" else "🌙"
     logged_in = "1" if current_user else "0"
 
+    seo_description = html.escape((description or DEFAULT_SEO_DESCRIPTION)[:300])
+    canonical_url = f"{SITE_URL}{canonical_path}" if canonical_path else SITE_URL
+    page_title_full = html.escape(f"{title} — STAR DUBBING")
+
     if current_user:
         name = html.escape(current_user["settings"]["display_name"] or current_user["user"]["full_name"] or "Profil")
         profile_link = f'<a href="/profil" class="{"active" if active == "profil" else ""}">👤 {name}</a>'
@@ -1296,7 +1308,17 @@ def base_page(title: str, body: str, active: str = "", marquee_items=None,
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{html.escape(title)} — STAR DUBBING</title>
+<title>{page_title_full}</title>
+<meta name="description" content="{seo_description}">
+<link rel="canonical" href="{canonical_url}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="STAR DUBBING">
+<meta property="og:title" content="{page_title_full}">
+<meta property="og:description" content="{seo_description}">
+<meta property="og:url" content="{canonical_url}">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{page_title_full}">
+<meta name="twitter:description" content="{seo_description}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⭐</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1494,8 +1516,12 @@ async def home(request):
 {grid}
 """
     return web.Response(
-        text=base_page("Bosh sahifa", body, active="home", marquee_items=marquee_items,
-                        current_user=current_user, theme=theme),
+        text=base_page(
+            "Bosh sahifa", body, active="home", marquee_items=marquee_items,
+            current_user=current_user, theme=theme,
+            description=DEFAULT_SEO_DESCRIPTION,
+            canonical_path="/",
+        ),
         content_type="text/html",
     )
 
@@ -1672,8 +1698,15 @@ async def anime_detail(request):
   </div>
 </div>
 """
+    anime_desc = (anime["description"] or "").strip() or (
+        f"{anime['title']} — o'zbek tilida sifatli dublyaj bilan STAR DUBBING saytida bepul tomosha qiling."
+    )
     return web.Response(
-        text=base_page(anime["title"], body, current_user=current_user, theme=theme),
+        text=base_page(
+            anime["title"], body, current_user=current_user, theme=theme,
+            description=anime_desc,
+            canonical_path=f"/anime/{anime_id}",
+        ),
         content_type="text/html",
     )
 
@@ -2149,6 +2182,42 @@ async def ping(request):
     return web.Response(text="STAR DUBBING bot va sayt ishlayapti ✅")
 
 
+async def robots_txt(request):
+    """Google va boshqa qidiruv botlariga saytni bemalol ko'rib chiqishga
+    ruxsat beradi va sitemap.xml manzilini ko'rsatadi -- bepul, Google
+    Search Console bilan birga ishlatilganda saytning qidiruvda chiqishini
+    tezlashtiradi."""
+    text = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /panel\n"
+        "Disallow: /api/\n"
+        f"Sitemap: {SITE_URL}/sitemap.xml\n"
+    )
+    return web.Response(text=text, content_type="text/plain")
+
+
+async def sitemap_xml(request):
+    """Saytdagi barcha ochiq sahifalarni (bosh sahifa, statik sahifalar,
+    har bir anime) ro'yxat qilib beradi -- Google Search Console'ga shu
+    havolani ('/sitemap.xml') topshirish orqali barcha anime sahifalari
+    bir martada qidiruv tizimiga taqdim etiladi."""
+    static_paths = ["/", "/janrlar", "/top", "/haqida", "/vip", "/savollar", "/aloqa"]
+    urls = [f"<url><loc>{SITE_URL}{p}</loc></url>" for p in static_paths]
+
+    anime_rows = await db.list_anime(offset=0, limit=5000)
+    for a in anime_rows:
+        urls.append(f"<url><loc>{SITE_URL}/anime/{a['id']}</loc></url>")
+
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + "\n".join(urls) +
+        "\n</urlset>"
+    )
+    return web.Response(text=body, content_type="application/xml")
+
+
 # ==================== ADMIN PANEL (/panel) ====================
 # Parol bilan himoyalangan, botning admin ekranidagi "👥 Foydalanuvchilar"
 # bo'limi bilan bir xil ma'lumotni brauzerda ko'rsatadi: barcha
@@ -2470,6 +2539,8 @@ def create_app(bot) -> web.Application:
     app["bot"] = bot
     app.router.add_get("/", home)
     app.router.add_get("/ping", ping)
+    app.router.add_get("/robots.txt", robots_txt)
+    app.router.add_get("/sitemap.xml", sitemap_xml)
     app.router.add_get("/janrlar", genres_page)
     app.router.add_get("/janr/{name}", genre_detail)
     app.router.add_get("/top", top_page)
