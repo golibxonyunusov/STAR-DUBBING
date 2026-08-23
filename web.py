@@ -2182,6 +2182,16 @@ async def ping(request):
     return web.Response(text="STAR DUBBING bot va sayt ishlayapti ✅")
 
 
+async def google_site_verification(request):
+    """Google Search Console'ning 'HTML file' orqali egalikni tasdiqlash
+    usuli -- Google saytga /google2042a3a9262e0b72.html manzili orqali
+    kirib, aynan shu matnni topsa, sayt egaligi avtomatik tasdiqlanadi."""
+    return web.Response(
+        text="google-site-verification: google2042a3a9262e0b72.html",
+        content_type="text/html",
+    )
+
+
 async def robots_txt(request):
     """Google va boshqa qidiruv botlariga saytni bemalol ko'rib chiqishga
     ruxsat beradi va sitemap.xml manzilini ko'rsatadi -- bepul, Google
@@ -2539,6 +2549,7 @@ def create_app(bot) -> web.Application:
     app["bot"] = bot
     app.router.add_get("/", home)
     app.router.add_get("/ping", ping)
+    app.router.add_get("/google2042a3a9262e0b72.html", google_site_verification)
     app.router.add_get("/robots.txt", robots_txt)
     app.router.add_get("/sitemap.xml", sitemap_xml)
     app.router.add_get("/janrlar", genres_page)
