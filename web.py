@@ -667,6 +667,11 @@ STYLES = """
     font-size: 11px; color: var(--vip); border: 1px solid var(--vip); border-radius: 20px;
     padding: 3px 9px; font-family: 'IBM Plex Mono', monospace;
   }
+  .admin-msg-badge {
+    font-size: 11px; color: var(--ok, #2ecc71); border: 1px solid var(--ok, #2ecc71); border-radius: 20px;
+    padding: 3px 9px; font-family: 'IBM Plex Mono', monospace; white-space: nowrap;
+  }
+  .admin-msg-hint { font-size: 12px; color: var(--muted); font-weight: 400; }
   .chat-log {
     max-width: 720px; max-height: 480px; overflow-y: auto;
     display: flex; flex-direction: column; gap: 10px;
@@ -2211,9 +2216,12 @@ def _admin_user_row_html(u) -> str:
     else:
         label = str(u["user_id"])
     blocked_badge = '<span class="admin-blocked-badge">🚫 bloklangan</span>' if u["blocked"] else ""
+    msg_count = u.get("msg_count", 0)
+    msg_badge = f'<span class="admin-msg-badge">💬 {msg_count}</span>' if msg_count else ""
     return f"""<a class="admin-user-row" href="/panel/foydalanuvchi/{u['user_id']}">
   <span class="admin-user-name">{label}</span>
   <span class="admin-user-id mono">ID: {u['user_id']}</span>
+  {msg_badge}
   {blocked_badge}
 </a>"""
 
@@ -2243,7 +2251,10 @@ async def admin_panel_users(request):
             if rows else '<p class="empty">Hozircha foydalanuvchilar yo\'q.</p>'
         )
         pager = pager_html("/panel/foydalanuvchilar", offset, total)
-        heading = f"Barcha foydalanuvchilar <span class=\"count\">{total}</span>"
+        heading = (
+            f"Barcha foydalanuvchilar <span class=\"count\">{total}</span> "
+            f"<span class=\"admin-msg-hint\">💬 -- adminga murojaat yozganlar (birinchi turadi)</span>"
+        )
 
     body = f"""
 <h2 class="section"><span class="ic">&#128101;</span> {heading}</h2>
@@ -2282,9 +2293,10 @@ async def admin_panel_users(request):
           list.innerHTML = data.map(function (u) {{
             var label = u.username ? ('@' + esc(u.username)) : esc(u.full_name || u.user_id);
             var blocked = u.blocked ? '<span class="admin-blocked-badge">🚫 bloklangan</span>' : '';
+            var msgBadge = u.msg_count ? ('<span class="admin-msg-badge">💬 ' + u.msg_count + '</span>') : '';
             return '<a class="admin-user-row" href="/panel/foydalanuvchi/' + u.user_id + '">' +
               '<span class="admin-user-name">' + label + '</span>' +
-              '<span class="admin-user-id mono">ID: ' + u.user_id + '</span>' + blocked + '</a>';
+              '<span class="admin-user-id mono">ID: ' + u.user_id + '</span>' + msgBadge + blocked + '</a>';
           }}).join('');
         }});
     }}, 260);
@@ -2316,6 +2328,7 @@ async def admin_panel_api_search(request):
             "username": u["username"],
             "full_name": u["full_name"],
             "blocked": bool(u["blocked"]),
+            "msg_count": u.get("msg_count", 0),
         }
         for u in rows
     ])
@@ -2379,6 +2392,7 @@ async def admin_panel_user_detail(request):
   <div class="profile-row"><span class="lbl">👑 VIP</span>{vip_html}</div>
   <div class="profile-row"><span class="lbl">🎬 Ko'rgan epizodlar</span><span class="val">{info['watched_count']}</span></div>
   <div class="profile-row"><span class="lbl">🎙 Yuklagan dublyajlar</span><span class="val">{info['dubs_count']}</span></div>
+  <div class="profile-row"><span class="lbl">📨 Adminga yozgan murojaatlar</span><span class="val">{info['msg_count']}</span></div>
 </div>
 <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:22px">
   <form method="post" action="/panel/foydalanuvchi/{info['user_id']}/blok">

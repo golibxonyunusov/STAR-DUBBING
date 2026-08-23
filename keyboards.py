@@ -13,7 +13,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
         [KeyboardButton(text="🔭 Qidirish"), KeyboardButton(text="🌌 Barcha animelar")],
         [KeyboardButton(text="🪐 Janrlar"), KeyboardButton(text="👑 VIP")],
         [KeyboardButton(text="🏆 TOP"), KeyboardButton(text="🧑\u200d🚀 Profil")],
-        [KeyboardButton(text="✨ Bot haqida")],
+        [KeyboardButton(text="✨ Bot haqida"), KeyboardButton(text="📨 Adminga murojaat")],
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
@@ -177,6 +177,8 @@ def users_list_kb(users, offset, total) -> InlineKeyboardMarkup:
             label = str(u["user_id"])
         if u["blocked"]:
             label = f"🚫 {label}"
+        if u.get("msg_count"):
+            label = f"💬{u['msg_count']} {label}"
         rows.append([InlineKeyboardButton(text=label, callback_data=f"userinfo_{u['user_id']}")])
 
     nav = []
@@ -204,6 +206,8 @@ def users_search_results_kb(users) -> InlineKeyboardMarkup:
             label = str(u["user_id"])
         if u["blocked"]:
             label = f"🚫 {label}"
+        if u.get("msg_count"):
+            label = f"💬{u['msg_count']} {label}"
         rows.append([InlineKeyboardButton(text=label, callback_data=f"userinfo_{u['user_id']}")])
 
     rows.append([InlineKeyboardButton(text="🔍 Qayta qidirish", callback_data="users_search")])
@@ -227,6 +231,15 @@ def user_actions_kb(user_id: int, blocked: bool) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🚪 Chiqish", callback_data="users_exit")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def contact_admin_notify_kb(user_id: int) -> InlineKeyboardMarkup:
+    """Foydalanuvchidan murojaat kelganda adminga yuboriladigan xabar ostidagi
+    tezkor tugma -- bosilsa, xuddi '✍️ Yozish' tugmasi bosilgandagidek shu
+    foydalanuvchiga darhol javob yozish rejimi ochiladi."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✍️ Javob berish", callback_data=f"writeuser_{user_id}")
+    ]])
 
 
 def exit_only_kb() -> InlineKeyboardMarkup:

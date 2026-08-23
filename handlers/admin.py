@@ -463,7 +463,9 @@ async def users_list_start(message: Message, state: FSMContext):
     total = await db.get_users_count()
     users = await db.get_users_page(offset=0, limit=PAGE_SIZE)
     await message.answer(
-        f"👥 Jami foydalanuvchilar: <b>{total}</b>\n\n"
+        f"👥 Jami foydalanuvchilar: <b>{total}</b>\n"
+        f"💬 belgisi bilan -- adminga murojaat yozgan foydalanuvchilar "
+        f"(ular ro'yxat boshida, xabarlar soni bilan) ko'rsatilgan.\n\n"
         f"Hammaga birdek e'lon qilish uchun \"🌐 HAMMAGA (ALL)\" ni bosing, "
         f"yoki ro'yxatdan kerakli foydalanuvchini tanlang:",
         reply_markup=users_list_kb(users, 0, total),
@@ -545,7 +547,8 @@ async def _send_user_info_card(send, user_id: int):
         f"Holati: {blocked_status}\n"
         f"👑 VIP: {vip_status}\n"
         f"🎬 Ko'rgan epizodlar: {info['watched_count']}\n"
-        f"🎙 Yuklagan dublyajlar: {info['dubs_count']}\n\n"
+        f"🎙 Yuklagan dublyajlar: {info['dubs_count']}\n"
+        f"📨 Adminga yozgan murojaatlar: {info['msg_count']}\n\n"
         f"Botdan qanday foydalangani shu yerda -- kerakli amalni tanlang:"
     )
     await send(text, reply_markup=user_actions_kb(user_id, bool(info["blocked"])))

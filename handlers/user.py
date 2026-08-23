@@ -11,6 +11,7 @@ from aiogram.exceptions import TelegramBadRequest
 import database as db
 import ai_assistant
 from config import (
+    ADMIN_IDS,
     PAGE_SIZE,
     REQUIRED_CHANNELS,
     SITE_URL,
@@ -21,7 +22,7 @@ from config import (
     PROFIL_IMAGE_PATH,
     VIP_IMAGE_PATH,
 )
-from states import EditProfile, SubmitDub
+from states import EditProfile, SubmitDub, ContactAdmin
 from keyboards import (
     main_menu_kb,
     subscribe_kb,
@@ -37,6 +38,8 @@ from keyboards import (
     top_anime_kb,
     top_dubs_kb,
     dub_view_kb,
+    cancel_kb,
+    contact_admin_notify_kb,
 )
 
 router = Router()
@@ -369,6 +372,66 @@ async def vip_status(message: Message):
             "VIP olish uchun @rudeus1111 bilan bog'laning."
         )
     await send_section_photo(message, "vip", VIP_IMAGE_PATH, caption)
+
+
+# ---------- ADMINGA MUROJAAT (faqat VIP) ----------
+
+@router.message(F.text == "📨 Adminga murojaat")
+async def contact_admin_start(message: Message, state: FSMContext):
+    vip = await db.get_vip(message.from_user.id)
+    if not vip:
+        await message.answer(
+            "📨 <b>Adminga murojaat</b>\n\n"
+            "Bu bo'lim faqat 👑 <b>VIP</b> foydalanuvchilar uchun ochiq.\n\n"
+            "VIP olish uchun @rudeus1111 bilan bog'laning."
+        )
+        return
+    await state.set_state(ContactAdmin.message)
+    await message.answer(
+        "📨 <b>Adminga murojaat</b>\n\n"
+        "Xabaringizni yozing (matn, rasm yoki video bo'lishi mumkin) -- "
+        "adminga darhol yetkaziladi:",
+        reply_markup=cancel_kb(),
+    )
+
+
+@router.message(ContactAdmin.message, F.text == "❌ Bekor qilish")
+async def contact_admin_cancel(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Bekor qilindi.", reply_markup=main_menu_kb())
+
+
+@router.message(ContactAdmin.message)
+async def contact_admin_send(message: Message, state: FSMContext, bot: Bot):
+    await state.clear()
+    content = message.text or message.caption or "· media xabar"
+    await db.log_message(message.from_user.id, "in", content)
+
+    user = message.from_user
+    header = (
+        f"📨 <b>Yangi murojaat</b>\n"
+        f"👤 {user.full_name}"
+        + (f" (@{user.username})" if user.username else "")
+        + f"\n🆔 <code>{user.id}</code>"
+    )
+    sent_to_any = False
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.send_message(chat_id=admin_id, text=header)
+            await bot.copy_message(
+                chat_id=admin_id,
+                from_chat_id=message.chat.id,
+                message_id=message.message_id,
+                reply_markup=contact_admin_notify_kb(user.id),
+            )
+            sent_to_any = True
+        except Exception:
+            continue
+
+    if sent_to_any:
+        await message.answer("✅ Murojaatingiz adminga yuborildi. Tez orada javob berishadi.", reply_markup=main_menu_kb())
+    else:
+        await message.answer("❌ Murojaatni yuborib bo'lmadi, birozdan so'ng qayta urinib ko'ring.", reply_markup=main_menu_kb())
 
 
 # ---------- PROFIL ----------

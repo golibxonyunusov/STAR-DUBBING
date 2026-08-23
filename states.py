@@ -61,3 +61,7 @@ class WriteToUser(StatesGroup):
 
 class SearchUser(StatesGroup):
     query = State()
+
+
+class ContactAdmin(StatesGroup):
+    message = State()

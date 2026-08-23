@@ -267,11 +267,28 @@ async def get_user(user_id: int):
 
 async def get_users_page(offset: int = 0, limit: int = 10):
     """Foydalanuvchilar ro'yxatini sahifalab qaytaradi (admin panel --
-    '👥 Foydalanuvchilar' bo'limi uchun): user_id, username, full_name, blocked."""
+    '👥 Foydalanuvchilar' bo'limi uchun): user_id, username, full_name, blocked,
+    msg_count (adminga yozgan murojaatlar soni).
+
+    Adminga murojaat yozgan foydalanuvchilar (msg_count > 0) ro'yxatning
+    ENG BOSHIDA turadi (eng ko'p yozganidan boshlab), qolganlar esa odatdagidek
+    qo'shilgan sanasi bo'yicha -- shu orqali admin murojaat yozganlarni
+    darhol ko'radi va e'tiborsiz qoldirmaydi."""
     client = get_client()
     rs = await client.execute(
-        "SELECT user_id, username, full_name, blocked FROM users "
-        "ORDER BY joined_at DESC LIMIT ? OFFSET ?",
+        """
+        SELECT u.user_id, u.username, u.full_name, u.blocked,
+               COALESCE(m.msg_count, 0) AS msg_count
+        FROM users u
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) AS msg_count
+            FROM message_log
+            WHERE direction = 'in'
+            GROUP BY user_id
+        ) m ON m.user_id = u.user_id
+        ORDER BY msg_count DESC, u.joined_at DESC
+        LIMIT ? OFFSET ?
+        """,
         (limit, offset),
     )
     return [dict(zip(rs.columns, row)) for row in rs.rows]
@@ -306,6 +323,11 @@ async def get_user_full_info(user_id: int):
         "SELECT COUNT(*) FROM dub_submissions WHERE user_id = ?", (user_id,)
     )
     user["dubs_count"] = rs_dubs.rows[0][0] if rs_dubs.rows else 0
+
+    rs_msgs = await client.execute(
+        "SELECT COUNT(*) FROM message_log WHERE user_id = ? AND direction = 'in'", (user_id,)
+    )
+    user["msg_count"] = rs_msgs.rows[0][0] if rs_msgs.rows else 0
 
     return user
 
@@ -360,13 +382,22 @@ async def search_users(query: str, limit: int = 20):
     client = get_client()
     rs = await client.execute(
         """
-        SELECT user_id, username, full_name, blocked FROM users
-        WHERE LOWER(COALESCE(username, '')) LIKE ? ESCAPE '\\'
-           OR LOWER(COALESCE(full_name, '')) LIKE ? ESCAPE '\\'
-           OR CAST(user_id AS TEXT) LIKE ? ESCAPE '\\'
+        SELECT u.user_id, u.username, u.full_name, u.blocked,
+               COALESCE(m.msg_count, 0) AS msg_count
+        FROM users u
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) AS msg_count
+            FROM message_log
+            WHERE direction = 'in'
+            GROUP BY user_id
+        ) m ON m.user_id = u.user_id
+        WHERE LOWER(COALESCE(u.username, '')) LIKE ? ESCAPE '\\'
+           OR LOWER(COALESCE(u.full_name, '')) LIKE ? ESCAPE '\\'
+           OR CAST(u.user_id AS TEXT) LIKE ? ESCAPE '\\'
         ORDER BY
-            CASE WHEN LOWER(COALESCE(username, '')) LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END,
-            joined_at DESC
+            CASE WHEN LOWER(COALESCE(u.username, '')) LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END,
+            msg_count DESC,
+            u.joined_at DESC
         LIMIT ?
         """,
         (
