@@ -38,8 +38,8 @@ from keyboards import (
     top_anime_kb,
     top_dubs_kb,
     dub_view_kb,
-    cancel_kb,
     contact_admin_notify_kb,
+    contact_admin_active_kb,
 )
 
 router = Router()
@@ -375,6 +375,10 @@ async def vip_status(message: Message):
 
 
 # ---------- ADMINGA MUROJAAT (faqat VIP) ----------
+# Diqqat: bu yerda FSM holati xabar yuborilgandan keyin TOZALANMAYDI --
+# foydalanuvchi "🚪 Suhbatni yakunlash" tugmasini bosmaguncha, yozgan HAR
+# BIR keyingi xabari ham (qayta "Adminga murojaat" tugmasini bosmasdan)
+# to'g'ridan-to'g'ri adminga ketaveradi.
 
 @router.message(F.text == "📨 Adminga murojaat")
 async def contact_admin_start(message: Message, state: FSMContext):
@@ -390,26 +394,27 @@ async def contact_admin_start(message: Message, state: FSMContext):
     await message.answer(
         "📨 <b>Adminga murojaat</b>\n\n"
         "Xabaringizni yozing (matn, rasm yoki video bo'lishi mumkin) -- "
-        "adminga darhol yetkaziladi:",
-        reply_markup=cancel_kb(),
+        "adminga darhol yetkaziladi. Suhbatni istalgan payt "
+        "\"🚪 Suhbatni yakunlash\" tugmasi orqali tugatishingiz mumkin, "
+        "aks holda yozgan har bir xabaringiz shu tarzda adminga borishda davom etadi:",
+        reply_markup=contact_admin_active_kb(),
     )
 
 
-@router.message(ContactAdmin.message, F.text == "❌ Bekor qilish")
-async def contact_admin_cancel(message: Message, state: FSMContext):
+@router.message(ContactAdmin.message, F.text == "🚪 Suhbatni yakunlash")
+async def contact_admin_finish(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("Bekor qilindi.", reply_markup=main_menu_kb())
+    await message.answer("✅ Suhbat yakunlandi.", reply_markup=main_menu_kb())
 
 
 @router.message(ContactAdmin.message)
 async def contact_admin_send(message: Message, state: FSMContext, bot: Bot):
-    await state.clear()
     content = message.text or message.caption or "· media xabar"
     await db.log_message(message.from_user.id, "in", content)
 
     user = message.from_user
     header = (
-        f"📨 <b>Yangi murojaat</b>\n"
+        f"📨 <b>Murojaat</b>\n"
         f"👤 {user.full_name}"
         + (f" (@{user.username})" if user.username else "")
         + f"\n🆔 <code>{user.id}</code>"
@@ -428,10 +433,12 @@ async def contact_admin_send(message: Message, state: FSMContext, bot: Bot):
         except Exception:
             continue
 
+    # Holat (state) ATAYLAB tozalanmaydi -- foydalanuvchi "Suhbatni
+    # yakunlash" tugmasini bosmaguncha shu rejimda qolaveradi.
     if sent_to_any:
-        await message.answer("✅ Murojaatingiz adminga yuborildi. Tez orada javob berishadi.", reply_markup=main_menu_kb())
+        await message.answer("✅ Yuborildi.")
     else:
-        await message.answer("❌ Murojaatni yuborib bo'lmadi, birozdan so'ng qayta urinib ko'ring.", reply_markup=main_menu_kb())
+        await message.answer("❌ Yuborib bo'lmadi, birozdan so'ng qayta urinib ko'ring.")
 
 
 # ---------- PROFIL ----------

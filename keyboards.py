@@ -157,6 +157,16 @@ def cancel_kb() -> ReplyKeyboardMarkup:
     )
 
 
+def contact_admin_active_kb() -> ReplyKeyboardMarkup:
+    """Foydalanuvchi 'Adminga murojaat' rejimida bo'lganda ko'rinadigan
+    klaviatura -- shu rejim ochiq turadi (har bir yozgan xabari adminga
+    ketadi), toki foydalanuvchi '🚪 Suhbatni yakunlash' tugmasini bosmaguncha."""
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🚪 Suhbatni yakunlash")]],
+        resize_keyboard=True,
+    )
+
+
 # ---------- FOYDALANUVCHILAR (admin: ro'yxat / yozish / bloklash) ----------
 
 def users_list_kb(users, offset, total) -> InlineKeyboardMarkup:
