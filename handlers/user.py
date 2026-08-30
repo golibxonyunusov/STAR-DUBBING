@@ -379,9 +379,12 @@ async def vip_status(message: Message):
 
 @router.message(F.text == "🌐 Bizning sayt")
 async def website_link(message: Message):
-    await message.answer(
-        "🌐 <b>STAR DUBBING sayti</b>\n\n"
-        "Kompyuter yoki brauzerdan qulayroq tomosha qilish uchun saytimizga o'ting:",
+    await message.answer_photo(
+        photo=f"{SITE_URL}/assets/og-image.png",
+        caption=(
+            "🌐 <b>STAR DUBBING sayti</b>\n\n"
+            "Kompyuter yoki brauzerdan qulayroq tomosha qilish uchun saytimizga o'ting:"
+        ),
         reply_markup=website_link_kb(SITE_URL),
     )
 
