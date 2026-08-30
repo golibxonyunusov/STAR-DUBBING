@@ -14,6 +14,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
         [KeyboardButton(text="🪐 Janrlar"), KeyboardButton(text="👑 VIP")],
         [KeyboardButton(text="🏆 TOP"), KeyboardButton(text="🧑\u200d🚀 Profil")],
         [KeyboardButton(text="✨ Bot haqida"), KeyboardButton(text="📨 Adminga murojaat")],
+        [KeyboardButton(text="🌐 Bizning sayt")],
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
@@ -127,6 +128,12 @@ def profile_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🌐 Saytda profilni ochish", callback_data="profile_web_login")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def website_link_kb(url: str) -> InlineKeyboardMarkup:
+    """'🌐 Bizning sayt' bosilganda ko'rinadigan tugma -- botdan tashqarida,
+    to'g'ridan-to'g'ri veb-brauzerda saytni ochadi."""
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🌐 Saytni ochish", url=url)]])
 
 
 def web_login_kb(url: str) -> InlineKeyboardMarkup:

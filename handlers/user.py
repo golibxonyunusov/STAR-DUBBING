@@ -33,6 +33,7 @@ from keyboards import (
     episode_nav_kb,
     profile_kb,
     web_login_kb,
+    website_link_kb,
     top_menu_kb,
     rating_stars_kb,
     top_anime_kb,
@@ -372,6 +373,17 @@ async def vip_status(message: Message):
             "VIP olish uchun @rudeus1111 bilan bog'laning."
         )
     await send_section_photo(message, "vip", VIP_IMAGE_PATH, caption)
+
+
+# ---------- SAYT HAVOLASI ----------
+
+@router.message(F.text == "🌐 Bizning sayt")
+async def website_link(message: Message):
+    await message.answer(
+        "🌐 <b>STAR DUBBING sayti</b>\n\n"
+        "Kompyuter yoki brauzerdan qulayroq tomosha qilish uchun saytimizga o'ting:",
+        reply_markup=website_link_kb(SITE_URL),
+    )
 
 
 # ---------- ADMINGA MUROJAAT (faqat VIP) ----------
