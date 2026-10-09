@@ -336,9 +336,8 @@ async def about_bot(message: Message):
         "  • 🌟 Eng yuqori baholangan animelar\n"
         "  • 🎙 Foydalanuvchilar yuklagan dublyajlar (o'zingiz ham \"🎙 Dublyaj "
         "yuklash\" orqali video yuborib, boshqalar tomonidan baholanishingiz mumkin!)\n"
-        "  • 🎁 <b>Oylik sovrinlar</b> — har oyning 1-sanasida eng faol "
-        "tomoshabin va eng zo'r dublyajchiga 👑 <b>Telegram Premium</b> sovrin "
-        "sifatida beriladi!\n\n"
+        "  • 🎁 <b>Oylik G'oliblar</b> — har oyning 1-sanasida eng faol "
+        "tomoshabin va eng zo'r dublyajchiga 👑 <b>botda elon qilinadi</b>\n\n"
         "🤖 <b>AI yordamchi</b> — botga oddiy savol yozsangiz (masalan salom, "
         "tavsiya so'rash va h.k.), yoki rasm/PDF/matn fayl yuborsangiz, sun'iy "
         "intellekt sizga javob beradi.\n\n"
@@ -694,7 +693,7 @@ async def show_monthly_winners(call: CallbackQuery):
         label = labels.get(r["category"], r["category"])
         unit = units.get(r["category"], "")
         lines.append(f"{label}: <b>{name}</b> — {r['metric_value']} {unit}")
-    lines.append("\n🎁 Sovrin: <b>Telegram Premium</b>\nHar oyning 1-sanasida yangi g'oliblar e'lon qilinadi — faol bo'ling! 🚀")
+    lines.append("\n🎁Har oyning 1-sanasida yangi g'oliblar e'lon qilinadi — faol bo'ling! 🚀")
     await call.message.answer("\n".join(lines))
     await call.answer()
 
