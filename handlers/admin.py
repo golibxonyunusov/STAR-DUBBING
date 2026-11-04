@@ -1,3 +1,4 @@
+import html
 import logging
 
 from aiogram import Router, F, Bot
@@ -111,11 +112,31 @@ async def add_anime_year(message: Message, state: FSMContext):
     await message.answer("🖼 Anime posterini (rasm) yuboring:", reply_markup=cancel_kb())
 
 
-async def _announce_new_anime(bot: Bot, anime_id: int, data: dict, poster_file_id: str):
+async def _channel_report(bot: Bot, notify_chat_id, text: str):
+    """E'lon yuborilmasa -- logga yozadi va adminning o'ziga ham xabar beradi
+    (xato jim yutib yuborilmasligi uchun)."""
+    logging.warning(f"[E'LON] {text}")
+    if notify_chat_id:
+        try:
+            await bot.send_message(notify_chat_id, f"⚠️ {text}")
+        except Exception:
+            pass
+
+
+def _watch_kb(anime_id: int):
+    if not BOT_USERNAME:
+        return None
+    deep_link = f"https://t.me/{BOT_USERNAME}?start=anime_{anime_id}"
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✨ Tomosha qilish ✨", url=deep_link)
+    ]])
+
+
+async def _announce_new_anime(bot: Bot, anime_id: int, data: dict, poster_file_id: str, notify_chat_id=None):
     """Yangi qo'shilgan animeni (poster + ma'lumotlar bilan) e'lon kanaliga
-    yuboradi. Xatolik bo'lsa (masalan bot kanalda admin emas), faqat logga
-    yoziladi -- admin panel ishlashida xalaqit bermaydi."""
+    yuboradi. Xatolik bo'lsa adminning o'ziga ham sababi yoziladi."""
     if not ANNOUNCE_CHANNEL_ID:
+        await _channel_report(bot, notify_chat_id, "ANNOUNCE_CHANNEL_ID sozlanmagan, kanalga e'lon yuborilmadi.")
         return
     caption = (
         f"🆕 <b>Yangi anime qo'shildi!</b>\n\n"
@@ -126,20 +147,55 @@ async def _announce_new_anime(bot: Bot, anime_id: int, data: dict, poster_file_i
         f"🆔 Kod: <code>{anime_id}</code>\n"
         f"📥 Botda tomosha qilish uchun botga o'ting va shu kodni yuboring."
     )
-    kb = None
-    if BOT_USERNAME:
-        deep_link = f"https://t.me/{BOT_USERNAME}?start=anime_{anime_id}"
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✨ Tomosha qilish ✨", url=deep_link)
-        ]])
-
     try:
         sent = await bot.send_photo(
-            chat_id=ANNOUNCE_CHANNEL_ID, photo=poster_file_id, caption=caption, reply_markup=kb
+            chat_id=ANNOUNCE_CHANNEL_ID, photo=poster_file_id, caption=caption,
+            reply_markup=_watch_kb(anime_id),
         )
         await db.set_announce_message(anime_id, sent.chat.id, sent.message_id)
-    except TelegramBadRequest as e:
-        logging.warning(f"[ANIME E'LONI] Kanalga yuborib bo'lmadi ({ANNOUNCE_CHANNEL_ID}): {e}")
+    except Exception as e:  # Forbidden ham shu yerda ushlanadi
+        await _channel_report(
+            bot, notify_chat_id,
+            f"Kanalga e'lon yuborilmadi.\nKanal ID: <code>{ANNOUNCE_CHANNEL_ID}</code>\n"
+            f"Xato: <code>{html.escape(str(e))}</code>",
+        )
+
+
+async def _announce_new_episode(bot: Bot, anime_id: int, episode_number: int, notify_chat_id=None):
+    """Yangi QISM qo'shilganda e'lon kanaliga "Yangi qism!" xabarini yuboradi."""
+    if not ANNOUNCE_CHANNEL_ID:
+        await _channel_report(bot, notify_chat_id, "ANNOUNCE_CHANNEL_ID sozlanmagan, qism e'loni yuborilmadi.")
+        return
+    try:
+        anime = await db.get_anime(anime_id)
+    except Exception:
+        anime = None
+    if not anime:
+        return
+
+    caption = (
+        f"🔥 <b>Yangi qism!</b>\n\n"
+        f"🎬 <b>{anime['title']}</b>\n"
+        f"📺 <b>{episode_number}-qism</b> qo'shildi\n\n"
+        f"🆔 Kod: <code>{anime_id}</code>\n"
+        f"📥 Botda tomosha qilish uchun pastdagi tugmani bosing."
+    )
+    kb = _watch_kb(anime_id)
+    try:
+        poster = anime["poster_file_id"]
+        if poster:
+            try:
+                await bot.send_photo(chat_id=ANNOUNCE_CHANNEL_ID, photo=poster, caption=caption, reply_markup=kb)
+                return
+            except TelegramBadRequest as e:
+                logging.warning(f"[QISM E'LONI] Poster yuborilmadi, matn yuboriladi: {e}")
+        await bot.send_message(chat_id=ANNOUNCE_CHANNEL_ID, text=caption, reply_markup=kb)
+    except Exception as e:
+        await _channel_report(
+            bot, notify_chat_id,
+            f"Qism e'loni kanalga yuborilmadi.\nKanal ID: <code>{ANNOUNCE_CHANNEL_ID}</code>\n"
+            f"Xato: <code>{html.escape(str(e))}</code>",
+        )
 
 
 @router.message(AddAnime.poster, F.photo)
@@ -161,7 +217,7 @@ async def add_anime_poster(message: Message, state: FSMContext, bot: Bot):
         reply_markup=admin_menu_kb(),
     )
 
-    await _announce_new_anime(bot, anime_id, data, poster_file_id)
+    await _announce_new_anime(bot, anime_id, data, poster_file_id, message.chat.id)
 
 
 @router.message(AddAnime.poster)
@@ -203,7 +259,7 @@ async def add_episode_number(message: Message, state: FSMContext):
 
 
 @router.message(AddEpisode.video, F.video)
-async def add_episode_video(message: Message, state: FSMContext):
+async def add_episode_video(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     file_id = message.video.file_id
 
@@ -218,6 +274,10 @@ async def add_episode_video(message: Message, state: FSMContext):
 
     episode_id = await db.add_episode(data["anime_id"], data["episode_number"], file_id)
     await state.update_data(episode_id=episode_id)
+
+    # Kanalga "Yangi qism!" e'loni (xato bo'lsa admin ogohlantiriladi)
+    await _announce_new_episode(bot, data["anime_id"], data["episode_number"], message.chat.id)
+
     await state.set_state(AddEpisode.web_video)
     await message.answer(
         f"✅ Video saqlandi (bu — Telegram bot uchun, file_id orqali).\n\n"
